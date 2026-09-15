@@ -77,10 +77,10 @@ window.demos = async (id) => {
   try {
     const r = await adm('/accounts/' + id + '/demos');
     openModal('<p class="muted" style="margin-top:0">Cria um número completo para cada segmento (dados da empresa, serviços, equipe, horários e regras), com a sala de teste já ligada. A conta precisa ter a chave do Gemini válida.</p><div class="checks" id="dm">' + r.demos.map(d => '<label class="check"><input type="checkbox" value="' + d.chave + '" checked>' + escapeHtml(d.rotulo) + ' <span class="soft small">(' + escapeHtml(d.empresa) + ')</span></label>').join('') + '</div><div id="dm-res"></div>',
-      { title: 'Criar números de demonstração', wide: true, footer: '<button class="btn" style="margin-right:auto" id="dm-fotos" title="Coloca as fotos ilustradas nas equipes das demos já criadas">Completar fotos das demos</button><button class="btn" onclick="closeModal()">Fechar</button><button class="btn btn-primary" id="dm-go">Criar demonstrações</button>' });
+      { title: 'Criar números de demonstração', wide: true, footer: '<button class="btn" style="margin-right:auto" id="dm-fotos" title="Coloca as fotos ilustradas nas equipes das demos já criadas">Atualizar demos (fotos e cardápio)</button><button class="btn" onclick="closeModal()">Fechar</button><button class="btn btn-primary" id="dm-go">Criar demonstrações</button>' });
     q('dm-fotos').onclick = async (ev) => {
       btnLoading(ev.currentTarget, true, 'Enviando fotos…');
-      try { const x = await adm('/accounts/' + id + '/demos/fotos', { method: 'POST' }); toast(x.fotos + ' foto(s) colocada(s) em ' + x.numeros + ' demo(s)', 'ok'); } catch (e) { toast(e.message, 'err'); }
+      try { const x = await adm('/accounts/' + id + '/demos/fotos', { method: 'POST', body: { base_url: new URL('.', location.href).href } }); toast(x.fotos + ' foto(s) colocada(s) em ' + x.numeros + ' demo(s)', 'ok'); } catch (e) { toast(e.message, 'err'); }
       btnLoading(null, false);
     };
     q('dm-go').onclick = async (ev) => {
@@ -88,7 +88,7 @@ window.demos = async (id) => {
       if (!escolhidas.length) return toast('Escolha pelo menos uma', 'err');
       btnLoading(ev.currentTarget, true, 'Criando…');
       try {
-        const x = await adm('/accounts/' + id + '/demos', { method: 'POST', body: { demos: escolhidas } });
+        const x = await adm('/accounts/' + id + '/demos', { method: 'POST', body: { demos: escolhidas, base_url: new URL('.', location.href).href } });
         q('dm-res').innerHTML = '<div class="notice notice-ok" style="margin-top:14px">Criado. Links das salas de teste:</div>' + x.criados.map(c => '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><b style="min-width:150px">' + escapeHtml(c.nome) + '</b><input class="input" readonly value="' + escapeHtml(linkSala(c.sala_token)) + '"><a class="btn btn-sm" target="_blank" rel="noopener" href="' + escapeHtml(linkSala(c.sala_token)) + '">Abrir</a></div>').join('');
         q('dm-go')?.remove(); painel();
       } catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }

@@ -9,10 +9,32 @@ const ROT = () => ({ imobiliaria: ['Imóveis', 'imóvel', 'Novo imóvel'], deliv
   renderShell('produtos', { title: ROT()[0] });
   if (!['delivery', 'varejo', 'imobiliaria', 'ecommerce'].includes(SEG())) { q('content').innerHTML = '<div class="notice">Este número não usa catálogo.</div>'; return; }
   q('topbar-actions').innerHTML = '<button class="btn btn-primary" onclick="editar()">' + icon('plus', 16) + ' ' + ROT()[2] + '</button>';
-  q('content').innerHTML = '<div class="page" style="max-width:1200px"><div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap"><input class="input" id="bq" placeholder="Buscar" style="max-width:320px"><select class="select" id="bc" style="max-width:220px"><option value="">Todas as categorias</option></select></div><div class="prod-grid" id="gr"><div class="spinner"></div></div></div>';
+  q('content').innerHTML = '<div class="page" style="max-width:1200px">' + (SEG() === 'delivery' ? '<div class="panel" id="cdp"></div>' : '') + '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap"><input class="input" id="bq" placeholder="Buscar" style="max-width:320px"><select class="select" id="bc" style="max-width:220px"><option value="">Todas as categorias</option></select></div><div class="prod-grid" id="gr"><div class="spinner"></div></div></div>';
   let t; q('bq').oninput = () => { clearTimeout(t); t = setTimeout(carregar, 250); }; q('bc').onchange = carregar;
   carregar();
+  if (SEG() === 'delivery') painelCardapio();
 })();
+async function painelCardapio() {
+  try {
+    const r = await api('/api/cardapio');
+    const base = new URL('.', location.href).href;
+    q('cdp').innerHTML = `<div class="panel-head"><div><h3>Cardápio digital</h3><p>Página em que o cliente monta o pedido como num app e envia pelo WhatsApp. A IA confere e finaliza. Use no Instagram, no Google e em QR Code na mesa ou na embalagem.</p></div>
+      <label class="switch"><input type="checkbox" id="cd-on" ${r.ativo ? 'checked' : ''}><span></span></label></div>
+      ${r.ativo ? `<div class="panel-body" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
+        <div id="cd-qr" style="background:#fff;padding:8px;border-radius:8px;border:1px solid var(--line)"></div>
+        <div style="flex:1;min-width:260px"><div style="display:flex;gap:8px;flex-wrap:wrap"><input class="input" readonly id="cd-l" value="${escapeHtml(r.url || '')}" style="flex:1;min-width:220px"><button class="btn" id="cd-c">Copiar</button><a class="btn btn-primary" href="${escapeHtml(r.url || '#')}" target="_blank" rel="noopener">Abrir</a></div>
+          <div class="small soft" style="margin-top:8px">${r.whatsapp ? 'O botão do cardápio abre o WhatsApp deste número com o pedido pronto.' : 'WhatsApp não conectado: o botão do cardápio envia para a sala de teste (se estiver ligada).'} A IA também manda este link quando o cliente pede o cardápio.</div>
+          <button class="btn btn-sm" style="margin-top:8px" id="cd-dl">Baixar QR Code</button></div></div>` : ''}`;
+    q('cd-on').onchange = async (e) => { try { await api('/api/cardapio', { method: 'PATCH', body: { ativo: e.target.checked, base_url: base } }); toast(e.target.checked ? 'Cardápio digital ligado' : 'Cardápio digital desligado', 'ok'); painelCardapio(); } catch (err) { toast(err.message, 'err'); e.target.checked = !e.target.checked; } };
+    if (r.ativo) {
+      if (!r.url || !r.url.startsWith(base)) { await api('/api/cardapio', { method: 'PATCH', body: { ativo: true, base_url: base } }); return painelCardapio(); }
+      q('cd-c').onclick = () => navigator.clipboard.writeText(r.url).then(() => toast('Link copiado', 'ok'));
+      const desenhar = () => { q('cd-qr').innerHTML = ''; new QRCode(q('cd-qr'), { text: r.url, width: 132, height: 132, correctLevel: QRCode.CorrectLevel.M }); };
+      if (window.QRCode) desenhar(); else { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; sc.onload = desenhar; document.head.appendChild(sc); }
+      q('cd-dl').onclick = () => { const c = q('cd-qr').querySelector('canvas'); if (!c) return; const big = document.createElement('div'); new QRCode(big, { text: r.url, width: 1024, height: 1024, correctLevel: QRCode.CorrectLevel.M }); setTimeout(() => { const a = document.createElement('a'); a.download = 'qrcode-cardapio.png'; a.href = big.querySelector('canvas').toDataURL('image/png'); a.click(); }, 150); };
+    }
+  } catch (e) { q('cdp').innerHTML = '<div class="panel-body"><div class="notice notice-err" style="margin:0">' + escapeHtml(e.message) + '</div></div>'; }
+}
 async function carregar() {
   try {
     const p = new URLSearchParams(); if (q('bq').value.trim()) p.set('q', q('bq').value.trim()); if (q('bc').value) p.set('categoria', q('bc').value);
