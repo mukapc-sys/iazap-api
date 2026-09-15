@@ -65,6 +65,8 @@ const I = {
   bike: '<circle cx="5.5" cy="17" r="3.5"/><circle cx="18.5" cy="17" r="3.5"/><path d="M5.5 17 9 9h6l3.5 8M9 9 7.5 5.5H5M15 9l-3 8"/>',
   swap: '<path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   store: '<path d="M3 9 4.5 4h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 11v10h14V11"/>',
   box: '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
   building: '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1M10 21v-3h4v3"/>',
@@ -130,6 +132,7 @@ function renderShell(activeKey, opts = {}) {
     <div class="sb-section">Atendimento</div>
     ${item({ key: 'inbox', label: 'Conversas', icon: 'chat', href: 'inbox.html' }, '<span class="sb-badge hidden" id="sb-unread"></span>')}
     ${item({ key: 'contatos', label: 'Contatos', icon: 'users', href: 'contatos.html' })}
+    ${item({ key: 'agendadas', label: 'Programadas', icon: 'clock', href: 'agendadas.html' })}
     <div class="sb-section">${mod ? escapeHtml(mod.nome) : 'Seu negócio'}</div>
     ${(mod ? mod.menu : []).map(m => item({ ...m, soon: !m.href })).join('')}
     ${item({ key: 'empresa', label: 'Dados da empresa', icon: 'building', href: 'empresa.html' })}

@@ -85,12 +85,14 @@ function renderConversa() {
     </div>
     ${c.ia_pausada ? '<div class="conv-bar"><span>Atendimento humano: a IA não responde nesta conversa.</span><button class="btn btn-sm" onclick="setIA(false)">Devolver para a IA</button></div>' : ''}
     <div class="conv-scroll" id="cv-s"></div>
+    <div id="cv-prog"></div>
     <div class="conv-input">
       <button class="icon-btn" title="Enviar foto, vídeo ou documento" aria-label="Anexar arquivo" onclick="q('cv-f').click()">${icon('clip', 22)}</button>
       <input type="file" id="cv-f" class="hidden" accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip">
       <textarea id="cv-t" rows="1" placeholder="Digite uma mensagem" aria-label="Mensagem"></textarea>
       <span class="rec-time hidden" id="cv-rt"></span>
       <button class="icon-btn hidden" id="cv-rx" title="Descartar gravação" aria-label="Descartar gravação">${icon('x', 20)}</button>
+      <button class="icon-btn" id="cv-ag" title="Programar mensagem" aria-label="Programar mensagem">${icon('clock', 21)}</button>
       <button class="icon-btn" id="cv-mic" title="Gravar áudio" aria-label="Gravar áudio">${icon('mic', 21)}</button>
       <button class="icon-btn send" id="cv-go" aria-label="Enviar">${icon('send', 20)}</button>
     </div>`;
@@ -102,6 +104,8 @@ function renderConversa() {
   q('cv-f').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) previewAnexo(f); };
   t.addEventListener('paste', (e) => { const f = [...(e.clipboardData?.files || [])][0]; if (f) { e.preventDefault(); previewAnexo(f); } });
   q('cv-mic').onclick = gravar;
+  q('cv-ag').onclick = programar;
+  carregarProgramadas();
   q('cv-rx').onclick = () => pararGravacao(false);
   renderMsgs();
   t.focus();
@@ -118,7 +122,7 @@ function renderMsgs(manterScroll) {
     const d = parseDate(m.criado_em), ds = d.toLocaleDateString('pt-BR');
     if (ds !== dia) { dia = ds; html += '<div class="conv-day">' + (ds === hoje ? 'Hoje' : ds === ontem ? 'Ontem' : ds) + '</div>'; }
     const out = m.direcao === 'out';
-    const who = !out ? '' : m.autor === 'ia' ? '<div class="who">IA</div>' : m.autor === 'celular' ? '<div class="who phone">Pelo celular</div>' : m.atendente ? '<div class="who">' + escapeHtml(m.atendente) + '</div>' : '';
+    const who = !out ? '' : m.autor === 'ia' ? '<div class="who">IA</div>' : m.autor === 'celular' ? '<div class="who phone">Pelo celular</div>' : m.autor === 'lembrete' ? '<div class="who">Lembrete automático</div>' : m.autor === 'agendada' ? '<div class="who">Programada' + (m.atendente ? ' por ' + escapeHtml(m.atendente) : '') + '</div>' : m.atendente ? '<div class="who">' + escapeHtml(m.atendente) + '</div>' : '';
     const st = out ? ({ enviado: ' ✓', entregue: ' ✓✓', lida: ' ✓✓', falhou: ' · falhou' }[m.status] || '') : '';
     const md = midiaHtml(m), txt = textoSemRotulo(m);
     html += `<div class="bubble ${out ? 'out' : 'in'} ${m.status === 'falhou' ? 'fail' : ''}" ${m.erro ? 'title="' + escapeHtml(m.erro) + '"' : ''}>${who}${md}${txt ? '<div class="txt">' + escapeHtml(txt) + '</div>' : ''}<div class="meta">${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${st}</div></div>`;
@@ -173,6 +177,38 @@ async function enviarArquivo(file, legenda) {
   if (!contato.ia_pausada) { contato.ia_pausada = 1; renderConversa(); renderSide(); }
   await recarregarConversa(); lista();
 }
+
+function paraInputLocal(d) { const x = new Date(d - d.getTimezoneOffset() * 6e4); return x.toISOString().slice(0, 16); }
+function programar() {
+  const texto = q('cv-t').value.trim();
+  const sug = new Date(Date.now() + 3600e3); sug.setMinutes(0, 0, 0);
+  openModal(`
+    <div class="field"><label for="pg-t">Mensagem</label><textarea class="textarea" id="pg-t" placeholder="Digite o que será enviado">${escapeHtml(texto)}</textarea></div>
+    <div class="field"><label for="pg-d">Enviar em</label><input type="datetime-local" class="input" id="pg-d" value="${paraInputLocal(sug)}" min="${paraInputLocal(new Date(Date.now() + 120e3))}" style="max-width:260px">
+      <div class="hint">Horário do seu computador. A mensagem sai automaticamente, mesmo com o painel fechado.</div></div>`,
+    { title: 'Programar mensagem', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="pg-go">Programar envio</button>' });
+  q('pg-go').onclick = async (ev) => {
+    const v = q('pg-d').value; if (!v) return toast('Escolha data e hora', 'err');
+    btnLoading(ev.currentTarget, true, 'Programando…');
+    try {
+      await api('/api/contacts/' + ativo + '/agendar', { method: 'POST', body: { texto: q('pg-t').value, enviar_em: new Date(v).toISOString() } });
+      closeModal(); if (q('cv-t').value.trim() === q('pg-t').value.trim()) q('cv-t').value = '';
+      toast('Mensagem programada para ' + new Date(v).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }), 'ok');
+      carregarProgramadas();
+    } catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
+  };
+}
+async function carregarProgramadas() {
+  const box = q('cv-prog'); if (!box || !ativo) return;
+  try {
+    const r = await api('/api/agendadas?status=pendente&contato=' + ativo);
+    box.innerHTML = r.agendadas.length ? '<div class="prog-bar">' + r.agendadas.map(x => '<div class="prog-item">' + icon(x.tipo === 'lembrete' ? 'bell' : 'clock', 15) + '<span><b>' + fmtDate(x.enviar_em) + '</b> · ' + escapeHtml(x.tipo === 'lembrete' ? 'Lembrete da marcação' : (x.texto || '').slice(0, 80)) + '</span>' + (x.tipo === 'manual' ? '<button class="sb-link" onclick="cancelarProg(\'' + x.id + '\')">Cancelar</button>' : '') + '</div>').join('') + '</div>' : '';
+  } catch { box.innerHTML = ''; }
+}
+window.cancelarProg = async (id) => {
+  if (!confirm('Cancelar esta mensagem programada?')) return;
+  try { await api('/api/agendadas/' + id, { method: 'DELETE' }); toast('Mensagem cancelada', 'ok'); carregarProgramadas(); } catch (e) { toast(e.message, 'err'); }
+};
 
 let gravador = null, pedacos = [], gravT = null;
 async function gravar() {
@@ -266,7 +302,7 @@ async function recarregarConversa() {
     const r = await api('/api/contacts/' + ativo + '/conversation');
     const assin = (arr) => JSON.stringify(arr.filter(m => m.id).map(m => [m.id, m.status, !!m.media_url]));
     const mudou = assin(r.mensagens) !== assin(mensagens);
-    if (mudou) { mensagens = r.mensagens; renderMsgs(true); }
+    if (mudou) { mensagens = r.mensagens; renderMsgs(true); carregarProgramadas(); }
     if (r.contato.nao_lidas > 0) api('/api/contacts/' + ativo + '/read', { method: 'POST' });
     if (!!r.contato.ia_pausada !== !!contato.ia_pausada) { contato = r.contato; renderConversa(); renderSide(); }
   } catch { }

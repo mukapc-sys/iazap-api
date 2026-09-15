@@ -44,6 +44,8 @@
 if (!requireAuth()) throw new Error('auth');
 const PX = 1.4; // pixels por minuto
 const ST = { agendado: 'Agendado', confirmado: 'Confirmado', concluido: 'Concluído', faltou: 'Faltou', cancelado: 'Cancelado' };
+const LEMB = [[0, 'Sem lembrete'], [15, '15 minutos antes'], [30, '30 minutos antes'], [60, '1 hora antes'], [120, '2 horas antes'], [180, '3 horas antes'], [1440, '1 dia antes']];
+const lembOpts = (v) => LEMB.map(([m, l]) => '<option value="' + m + '" ' + (Number(v || 0) === m ? 'selected' : '') + '>' + l + '</option>').join('');
 const STPILL = { agendado: 'pill-info', confirmado: 'pill-ok', concluido: '', faltou: 'pill-err', cancelado: '' };
 let dia = new URLSearchParams(location.search).get('data') || hojeISO();
 let grade = null, servicos = [], verCancelados = false;
@@ -116,7 +118,7 @@ function render() {
     const evs = g.agendamentos.filter(a => a.professional_id === p.id && (verCancelados || a.status !== 'cancelado')).map(a => {
       const hgt = Math.max(22, (a.fim_min - a.inicio_min) * PX - 2);
       return '<div class="ag-ev st-' + a.status + '" style="--c:' + escapeHtml(p.cor || '#14A152') + ';top:' + (y(a.inicio_min) + 1) + 'px;height:' + hgt + 'px" onclick="event.stopPropagation();verAg(\'' + a.id + '\')" title="' + escapeHtml(a.cliente_nome + ' · ' + (a.servico_nome || '')) + '">'
-        + (a.origem === 'ia' ? '<span class="ia">IA</span>' : '') + '<b>' + min2hm(a.inicio_min) + ' ' + escapeHtml(a.cliente_nome) + '</b>'
+        + (a.origem === 'ia' ? '<span class="ia">IA</span>' : '') + (a.lembrete_status === 'pendente' ? '<span style="float:right;color:var(--ink-mute)" title="Lembrete programado">' + icon('bell', 12) + '</span>' : '') + '<b>' + min2hm(a.inicio_min) + ' ' + escapeHtml(a.cliente_nome) + '</b>'
         + (hgt > 34 ? '<div class="s">' + escapeHtml(a.servico_nome || '') + (a.status !== 'agendado' ? ' · ' + ST[a.status] : '') + '</div>' : '') + '</div>';
     }).join('');
     return '<div class="ag-col" style="height:' + H + 'px" data-p="' + p.id + '">' + grid + offHtml + blocks + evs + nowLine + '</div>';
@@ -155,7 +157,10 @@ window.modalNovo = (pre = {}) => {
         <select class="select" id="nv-ep"></select><input type="time" class="input" id="nv-eh" value="${pre.hora || ''}">
       </div>
     </div>
-    <div class="field"><label for="nv-o">Observação</label><input class="input" id="nv-o"></div>`,
+    <div class="row">
+      <div class="field"><label for="nv-o">Observação</label><input class="input" id="nv-o"></div>
+      <div class="field"><label for="nv-l">Lembrete por WhatsApp</label><select class="select" id="nv-l">${lembOpts(0)}</select><div class="hint">Precisa do WhatsApp do cliente.</div></div>
+    </div>`,
     { title: 'Nova marcação', wide: true, footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="nv-go">Marcar horário</button>' });
 
   if (pre.profissional) { const s = servicos.find(s => s.profissionais.includes(pre.profissional)); if (s) q('nv-s').value = s.id; }
@@ -189,7 +194,8 @@ window.modalNovo = (pre = {}) => {
   q('nv-enc').onclick = () => { encaixe = !encaixe; q('nv-encbox').classList.toggle('hidden', !encaixe); q('nv-h').style.opacity = encaixe ? .35 : 1; q('nv-enc').textContent = encaixe ? 'Voltar aos horários livres' : 'Fazer encaixe fora dos horários livres'; };
   slots();
   q('nv-go').onclick = async (ev) => {
-    const body = { servico_id: q('nv-s').value, data: q('nv-d').value, cliente_nome: q('nv-c').value.trim(), cliente_telefone: q('nv-t').value, contact_id: cli?.id || null, obs: q('nv-o').value };
+    const body = { servico_id: q('nv-s').value, data: q('nv-d').value, cliente_nome: q('nv-c').value.trim(), cliente_telefone: q('nv-t').value, contact_id: cli?.id || null, obs: q('nv-o').value, lembrete_min: +q('nv-l').value || null };
+    if (body.lembrete_min && !body.cliente_telefone && !body.contact_id) return toast('Para programar o lembrete, informe o WhatsApp do cliente', 'err');
     if (encaixe) { body.profissional_id = q('nv-ep').value; body.hora = q('nv-eh').value; body.forcar = true; }
     else { body.profissional_id = escolha.profissional; body.hora = escolha.hora; }
     if (!body.cliente_nome) return toast('Informe o cliente', 'err');
@@ -212,6 +218,7 @@ window.verAg = (id) => {
       <span>Horário</span><div>${fmtDiaLongo(a.data)}, ${min2hm(a.inicio_min)} às ${min2hm(a.fim_min)}</div>
       <span>Status</span><div><span class="pill ${STPILL[a.status]}">${ST[a.status]}</span> <span class="small soft">${a.origem === 'ia' ? 'marcado pela IA' : 'marcado manualmente'}</span></div>
       ${a.obs ? '<span>Observação</span><div>' + escapeHtml(a.obs) + '</div>' : ''}
+      <span>Lembrete</span><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select class="select" id="dt-l" style="width:auto;padding:4px 8px" ${a.contact_id ? '' : 'disabled title="Marcação sem WhatsApp do cliente"'}>${lembOpts(a.lembrete_min)}</select><span class="small soft">${a.lembrete_status === 'pendente' ? 'programado' : a.lembrete_status === 'enviado' ? 'já enviado' : ''}</span></div>
     </div>
     <div class="field"><label>Mudar status</label><div class="st-btns">
       ${['confirmado', 'concluido', 'faltou', 'cancelado', 'agendado'].filter(s => s !== a.status).map(s => '<button class="btn btn-sm ' + (s === 'cancelado' ? 'btn-danger' : '') + '" onclick="setStatus(\'' + a.id + '\',\'' + s + '\')">' + ({ agendado: 'Voltar para agendado', confirmado: 'Confirmar', concluido: 'Concluído', faltou: 'Faltou', cancelado: 'Cancelar' })[s] + '</button>').join('')}
@@ -219,6 +226,13 @@ window.verAg = (id) => {
     <div id="rm"></div>`,
     { title: 'Marcação', wide: true, footer: (a.contact_id ? '<a class="btn" style="margin-right:auto" href="inbox.html?c=' + a.contact_id + '">Abrir conversa</a>' : '') + '<button class="btn" id="rm-b">Remarcar</button><button class="btn btn-primary" onclick="closeModal()">Fechar</button>' });
   q('rm-b').onclick = () => remarcar(a);
+  if (q('dt-l')) q('dt-l').onchange = async (e) => {
+    try {
+      const r = await api('/api/appointments/' + a.id, { method: 'PATCH', body: { lembrete_min: +e.target.value || null } });
+      toast(+e.target.value ? (r.lembrete_programado ? 'Lembrete programado' : 'O horário do lembrete já passou') : 'Lembrete removido', r.lembrete_programado || !+e.target.value ? 'ok' : 'err');
+      carregar(true);
+    } catch (err) { toast(err.message, 'err'); }
+  };
 };
 window.setStatus = async (id, status) => {
   if (status === 'cancelado' && !confirm('Cancelar esta marcação? O horário fica livre de novo.')) return;

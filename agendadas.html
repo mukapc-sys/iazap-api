@@ -1,0 +1,49 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Programadas — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+const TIPO = { manual: 'Mensagem programada', lembrete: 'Lembrete da agenda' };
+const STATUS = { pendente: ['Aguardando', 'pill-info'], enviando: ['Enviando', 'pill-info'], enviado: ['Enviada', 'pill-ok'], falhou: ['Falhou', 'pill-err'], cancelado: ['Cancelada', ''] };
+let filtro = 'pendente';
+(async () => {
+  await loadMe();
+  renderShell('agendadas', { title: 'Programadas' });
+  q('content').innerHTML = `<div class="page" style="max-width:1100px">
+    <p class="muted" style="margin:0 0 12px">Mensagens que saem automaticamente deste número: as programadas pela equipe na conversa e os lembretes da agenda. Para programar uma mensagem, abra a conversa e use o botão do relógio.</p>
+    <div class="ix-filters" id="fl" style="padding:0 0 12px;border:none"></div>
+    <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Envio</th><th>Contato</th><th>Tipo</th><th>Mensagem</th><th>Status</th><th></th></tr></thead><tbody id="tb"><tr><td colspan="6"><div class="spinner"></div></td></tr></tbody></table></div>
+  </div>`;
+  carregar();
+  setInterval(() => { if (!document.hidden) carregar(true); }, 30000);
+})();
+
+async function carregar(silencioso) {
+  try {
+    const r = await api('/api/agendadas?status=' + filtro);
+    const t = r.totais || {};
+    q('fl').innerHTML = [['pendente', 'Aguardando'], ['enviado', 'Enviadas'], ['falhou', 'Com falha'], ['cancelado', 'Canceladas'], ['todas', 'Todas']]
+      .map(([k, l]) => '<button class="ix-f ' + (k === filtro ? 'on' : '') + '" onclick="setF(\'' + k + '\')">' + l + (t[k] ? '<em>' + t[k] + '</em>' : '') + '</button>').join('');
+    q('tb').innerHTML = r.agendadas.length ? r.agendadas.map(x => {
+      const [stl, stc] = STATUS[x.status] || [x.status, ''];
+      return `<tr>
+        <td style="white-space:nowrap"><b>${fmtDate(x.enviado_em || x.enviar_em)}</b>${x.status === 'pendente' && x.tentativas ? '<div class="small soft">nova tentativa (' + x.tentativas + ')</div>' : ''}</td>
+        <td><a href="inbox.html?c=${x.contact_id}" style="font-weight:600;color:var(--ink)">${escapeHtml(x.contato_nome || fmtPhone(x.telefone))}</a><div class="small soft">${fmtPhone(x.telefone)}</div></td>
+        <td class="small">${TIPO[x.tipo] || x.tipo}${x.criado_por_nome ? '<div class="soft">por ' + escapeHtml(x.criado_por_nome) + '</div>' : ''}</td>
+        <td style="max-width:360px"><div class="small" style="white-space:pre-wrap">${escapeHtml(x.texto || (x.tipo === 'lembrete' ? 'Texto gerado na hora do envio, com os dados da marcação' : ''))}</div>${x.erro ? '<div class="small" style="color:var(--danger)">' + escapeHtml(x.erro) + '</div>' : ''}</td>
+        <td><span class="pill ${stc}">${stl}</span></td>
+        <td style="text-align:right;white-space:nowrap">
+          ${x.status === 'falhou' ? '<button class="btn btn-sm" onclick="reenviar(\'' + x.id + '\')">Tentar de novo</button>' : ''}
+          ${['pendente', 'falhou'].includes(x.status) ? '<button class="btn btn-sm btn-danger" onclick="cancelar(\'' + x.id + '\')">Cancelar</button>' : ''}
+        </td></tr>`;
+    }).join('') : '<tr><td colspan="6"><div class="empty"><b>Nada por aqui</b>' + (filtro === 'pendente' ? 'Nenhuma mensagem aguardando envio.' : 'Nenhuma mensagem neste filtro.') + '</div></td></tr>';
+  } catch (e) { if (!silencioso) toast(e.message, 'err'); }
+}
+window.setF = (k) => { filtro = k; carregar(); };
+window.cancelar = async (id) => {
+  if (!confirm('Cancelar este envio?')) return;
+  try { await api('/api/agendadas/' + id, { method: 'DELETE' }); toast('Envio cancelado', 'ok'); carregar(); } catch (e) { toast(e.message, 'err'); }
+};
+window.reenviar = async (id) => {
+  try { await api('/api/agendadas/' + id + '/reenviar', { method: 'POST' }); toast('Vai tentar de novo no próximo minuto', 'ok'); carregar(); } catch (e) { toast(e.message, 'err'); }
+};
+</script>
+</body></html>

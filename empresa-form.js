@@ -19,9 +19,13 @@ const TONS = [
 
 const EXTRAS = {
   agenda: [
+    { k: 'passo_agenda', l: 'Intervalo entre horários oferecidos', t: 'select', op: ['30', '15', '20', '45', '60'], rot: { '15': 'A cada 15 min', '20': 'A cada 20 min', '30': 'A cada 30 min', '45': 'A cada 45 min', '60': 'A cada 1 hora' } },
     { k: 'antecedencia_horas', l: 'Antecedência mínima para agendar (horas)', t: 'number', ph: '2' },
     { k: 'politica_cancelamento', l: 'Regra de cancelamento e atraso', t: 'textarea', ph: 'Ex.: cancelar com até 3 horas de antecedência. Atraso acima de 15 min pode perder o horário.' },
     { k: 'obs_agendamento', l: 'O que o cliente precisa saber antes de vir', t: 'textarea', ph: 'Ex.: chegar 5 min antes; estacionamento na rua lateral.' },
+    { k: 'oferecer_lembrete', l: 'A IA oferece lembrete depois de marcar?', t: 'select', op: ['Sim', 'Não'] },
+    { k: 'lembrete_padrao_min', l: 'Antecedência sugerida pela IA', t: 'select', op: ['30', '15', '60', '120', '180', '1440'], rot: { '15': '15 minutos antes', '30': '30 minutos antes', '60': '1 hora antes', '120': '2 horas antes', '180': '3 horas antes', '1440': '1 dia antes' } },
+    { k: 'lembrete_texto', l: 'Texto do lembrete', t: 'textarea', ph: 'Oi, {nome}! Passando para lembrar do seu horário: {servico} com {profissional}, {quando} às {hora}. Até lá!', hint: 'Use {nome}, {servico}, {profissional}, {quando} (hoje, amanhã ou o dia), {data}, {hora} e {empresa}. Em branco, usa o texto de exemplo.' },
   ],
   delivery: [
     { k: 'taxa_entrega', l: 'Taxa de entrega (R$)', t: 'text', ph: '6,00' },
@@ -90,9 +94,9 @@ function bizForm(el, { modelo, compact = false, onSaved } = {}) {
     const extrasHtml = (EXTRAS[modelo] || []).map(f => {
       const v = escapeHtml(extras[f.k] || '');
       const inp = f.t === 'textarea' ? `<textarea class="textarea" data-ex="${f.k}" placeholder="${escapeHtml(f.ph || '')}" style="min-height:64px">${v}</textarea>`
-        : f.t === 'select' ? `<select class="select" data-ex="${f.k}">${f.op.map(o => `<option ${extras[f.k] === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`
+        : f.t === 'select' ? `<select class="select" data-ex="${f.k}">${f.op.map(o => `<option value="${o}" ${extras[f.k] === o ? 'selected' : ''}>${f.rot ? f.rot[o] : o}</option>`).join('')}</select>`
           : `<input class="input" data-ex="${f.k}" type="${f.t}" value="${v}" placeholder="${escapeHtml(f.ph || '')}">`;
-      return `<div class="field"><label>${escapeHtml(f.l)}</label>${inp}</div>`;
+      return `<div class="field"><label>${escapeHtml(f.l)}</label>${inp}${f.hint ? `<div class="hint">${escapeHtml(f.hint)}</div>` : ''}</div>`;
     }).join('');
 
     const ia = `
