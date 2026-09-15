@@ -88,7 +88,7 @@ function render() {
   const box = q('ms'); if (!box) return;
   const noFim = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
   if (!msgs.length) {
-    const exemplos = info.segmento === 'agenda' ? ['Oi, quanto custa?', 'Tem horário amanhã de manhã?', 'Quero marcar para sexta', 'Onde fica?'] : ['Oi!', 'Como funciona?'];
+    const exemplos = info.segmento === 'agenda' ? ['Oi, quanto custa?', 'Tem horário amanhã de manhã?', 'Quem atende aí?', 'Onde fica?'] : ['Oi!', 'Como funciona?'];
     box.innerHTML = '<div class="inicio"><b>Comece a conversa</b><br>Escreva como um cliente escreveria.<div class="sugs">' + exemplos.map(x => '<button onclick="enviar(this.textContent)">' + escapeHtml(x) + '</button>').join('') + '</div></div>';
     return;
   }
@@ -98,13 +98,17 @@ function render() {
     const who = !out ? '' : m.autor === 'lembrete' ? '<div class="who">Lembrete automático</div>' : m.autor === 'agendada' ? '<div class="who">Mensagem programada</div>' : '';
     const hora = parseDate(m.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     // na visão do cliente: o que ele manda fica à direita, o que a empresa manda à esquerda
-    html += '<div class="bubble ' + (out ? 'in' : 'out') + '">' + who + '<div class="txt">' + formatar(m.conteudo) + '</div><div class="meta">' + hora + (out ? '' : ' ✓✓') + '</div></div>';
+    const img = m.media_url && String(m.media_mime || '').startsWith('image/') ? '<img class="b-img" src="' + escapeHtml(m.media_url) + '" alt="" loading="lazy" onclick="zoom(this.src)">' : '';
+    const txt = img ? String(m.conteudo || '').replace(/^📷\s*/u, '') : m.conteudo;
+    html += '<div class="bubble ' + (out ? 'in' : 'out') + '">' + who + img + (txt ? '<div class="txt">' + formatar(txt) + '</div>' : '') + '<div class="meta">' + hora + (out ? '' : ' ✓✓') + '</div></div>';
   }
   if (aguardando) html += '<div class="dig" aria-label="digitando"><i></i><i></i><i></i></div>';
   box.innerHTML = html;
   if (noFim || aguardando) box.scrollTop = box.scrollHeight;
   if (q('st')) q('st').textContent = aguardando ? 'digitando…' : (info.pronto ? 'online' : 'IA indisponível');
 }
+
+window.zoom = (src) => { const d = document.createElement('div'); d.className = 'lightbox'; d.innerHTML = '<img src="' + src + '" alt="">'; d.onclick = () => d.remove(); document.body.appendChild(d); };
 
 // negrito e itálico do WhatsApp
 function formatar(t) {
@@ -119,7 +123,7 @@ async function enviar(textoPronto) {
   esperaDesde = Date.now(); aguardando = true; render();
   try {
     await api('/sala/' + TOKEN + '/mensagem', { method: 'POST', noAuth: true, body: { visitante: vis, texto } });
-    agendarPoll(1000);
+    agendarPoll(700);
   } catch (e) { aguardando = false; esperaDesde = 0; msgs = msgs.filter(m => !m.local); render(); toast(e.message, 'err'); if (!textoPronto) t.value = texto; }
 }
 
@@ -127,7 +131,7 @@ function agendarPoll(ms) {
   clearTimeout(pollT);
   pollT = setTimeout(async () => {
     if (!document.hidden || aguardando) { try { await buscar(); render(); } catch { } }
-    agendarPoll(aguardando ? 1200 : 4000);
+    agendarPoll(aguardando ? 900 : 4000);
   }, ms);
 }
 
