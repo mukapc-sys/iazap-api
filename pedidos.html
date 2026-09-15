@@ -1,0 +1,41 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Pedidos — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+const COLS = [['novo', 'Novos'], ['confirmado', 'Confirmados'], ['preparo', 'Em preparo'], ['saiu', 'Saiu para entrega'], ['pronto', 'Pronto para retirada'], ['entregue', 'Entregues (24 h)'], ['cancelado', 'Cancelados (24 h)']];
+const PROX = { novo: ['confirmado', 'Confirmar'], confirmado: ['preparo', 'Em preparo'], preparo: [null, null], saiu: ['entregue', 'Entregue'], pronto: ['entregue', 'Retirado'] };
+let pedidos = [], ultimoTotal = null;
+(async () => {
+  const me = await loadMe();
+  renderShell('pedidos', { title: 'Pedidos' });
+  if (me.account.modelo !== 'delivery') { q('content').innerHTML = '<div class="notice">Este número não usa pedidos.</div>'; return; }
+  q('topbar-actions').innerHTML = '<label class="check" title="Avisa o cliente pelo WhatsApp a cada mudança"><input type="checkbox" id="av" checked>Avisar cliente</label>';
+  q('content').innerHTML = '<div class="kanban" id="kb"><div class="spinner"></div></div>';
+  carregar(); setInterval(() => !document.hidden && carregar(), 10000);
+})();
+async function carregar() {
+  try {
+    const r = await api('/api/pedidos'); pedidos = r.pedidos;
+    const novos = pedidos.filter(p => p.status === 'novo').length;
+    if (ultimoTotal !== null && novos > ultimoTotal) { toast('Novo pedido!', 'ok'); try { new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=').play(); } catch { } }
+    ultimoTotal = novos;
+    q('kb').innerHTML = COLS.map(([k, l]) => { const ps = pedidos.filter(p => p.status === k);
+      return '<div class="kcol"><h4>' + l + '<span class="soft">' + ps.length + '</span></h4>' + ps.map(card).join('') + '</div>'; }).join('');
+  } catch (e) { toast(e.message, 'err'); }
+}
+function card(p) {
+  const prox = p.status === 'preparo' ? (p.tipo === 'entrega' ? ['saiu', 'Saiu para entrega'] : ['pronto', 'Pronto']) : PROX[p.status] || [null, null];
+  return `<div class="kcard"><div style="display:flex;justify-content:space-between"><b>#${p.codigo} ${escapeHtml(p.cliente_nome || '')}</b><span class="small soft">${fmtRel(p.criado_em)}</span></div>
+    ${p.teste ? '<span class="tag" style="background:var(--warn-lt);color:var(--warn)">teste</span>' : ''}
+    <div class="it">${p.itens.map(i => i.quantidade + 'x ' + escapeHtml(i.nome) + (i.adicionais.length ? ' (+ ' + i.adicionais.map(a => escapeHtml(a.nome)).join(', ') + ')' : '') + (i.observacao ? ' · ' + escapeHtml(i.observacao) : '')).join('<br>')}</div>
+    <div class="small">${p.tipo === 'entrega' ? '🛵 ' + escapeHtml(p.endereco || '') : '🏪 Retirada'}</div>
+    <div class="small" style="margin-top:4px"><b>${fmtMoney(p.total_centavos)}</b> · ${escapeHtml(p.forma_pagamento || '')}${p.troco_para_centavos ? ' · troco para ' + fmtMoney(p.troco_para_centavos) : ''}</div>
+    ${p.observacao ? '<div class="small soft">Obs.: ' + escapeHtml(p.observacao) + '</div>' : ''}
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${prox[0] ? '<button class="btn btn-sm btn-primary" onclick="mudar(\'' + p.id + '\',\'' + prox[0] + '\')">' + prox[1] + '</button>' : ''}
+      ${!['entregue', 'cancelado'].includes(p.status) ? '<button class="btn btn-sm btn-ghost" onclick="mudar(\'' + p.id + '\',\'cancelado\')">Cancelar</button>' : ''}
+      ${p.contact_id && !p.teste ? '<a class="btn btn-sm btn-ghost" href="inbox.html?c=' + p.contact_id + '">Conversa</a>' : ''}</div></div>`;
+}
+window.mudar = async (id, status) => {
+  if (status === 'cancelado' && !confirm('Cancelar este pedido?')) return;
+  try { const r = await api('/api/pedidos/' + id, { method: 'PATCH', body: { status, avisar: q('av').checked } }); toast(r.avisado ? 'Status atualizado e cliente avisado' : 'Status atualizado', 'ok'); carregar(); } catch (e) { toast(e.message, 'err'); }
+};
+</script></body></html>

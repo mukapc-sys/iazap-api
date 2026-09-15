@@ -1,0 +1,76 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Campanhas — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+const ST = { ativa: ['Enviando', 'pill-info'], pausada: ['Pausada', 'pill-warn'], concluida: ['Concluída', 'pill-ok'], cancelada: ['Cancelada', ''] };
+let servicos = [], me;
+(async () => {
+  me = await loadMe();
+  renderShell('campanhas', { title: 'Campanhas' });
+  q('topbar-actions').innerHTML = '<button class="btn btn-primary" onclick="nova()">' + icon('plus', 16) + ' Nova campanha</button>';
+  q('content').innerHTML = `<div class="page" style="max-width:1100px">
+    <div class="notice">Campanhas saem aos poucos, com intervalo aleatório entre envios, só no horário permitido e dentro do limite diário (ajuste em <a href="automacoes.html" style="text-decoration:underline">Follow-ups e envios</a>). Quem respondeu SAIR não recebe. Mesmo assim, disparo em massa aumenta o risco de bloqueio do número: envie só para quem já é cliente.</div>
+    <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Campanha</th><th>Progresso</th><th>Status</th><th>Criada</th><th></th></tr></thead><tbody id="tb"><tr><td colspan="5"><div class="spinner"></div></td></tr></tbody></table></div></div>`;
+  if (MODELOS[me.account.modelo] && ['agenda', 'imobiliaria'].includes(me.account.modelo)) { try { servicos = (await api('/api/services')).servicos; } catch { } }
+  carregar(); setInterval(() => !document.hidden && carregar(), 20000);
+})();
+async function carregar() {
+  try {
+    const r = await api('/api/campanhas');
+    q('tb').innerHTML = r.campanhas.length ? r.campanhas.map(c => {
+      const pct = c.total ? Math.round(c.enviados / c.total * 100) : 0; const [sl, sc] = ST[c.status] || [c.status, ''];
+      return `<tr><td><b style="color:var(--ink)">${escapeHtml(c.nome)}</b><div class="small soft" style="max-width:360px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(c.texto)}</div>${c.variar ? '<span class="tag">variação pela IA</span>' : ''}</td>
+        <td style="min-width:180px"><div class="barra"><i style="width:${pct}%"></i></div><div class="small soft" style="margin-top:4px">${c.enviados} de ${c.total} enviadas${c.falhas ? ' · ' + c.falhas + ' falhas' : ''}${c.pendentes && c.status === 'ativa' ? ' · ' + c.pendentes + ' na fila' : ''}</div></td>
+        <td><span class="pill ${sc}">${sl}</span></td><td class="small">${fmtDate(c.criado_em)}</td>
+        <td style="white-space:nowrap;text-align:right"><button class="btn btn-sm" onclick="ver('${c.id}')">Ver</button>
+          ${c.status === 'ativa' ? '<button class="btn btn-sm" onclick="acao(\'' + c.id + '\',\'pausar\')">Pausar</button>' : ''}
+          ${c.status === 'pausada' ? '<button class="btn btn-sm" onclick="acao(\'' + c.id + '\',\'retomar\')">Retomar</button>' : ''}
+          ${['ativa', 'pausada'].includes(c.status) ? '<button class="btn btn-sm btn-danger" onclick="acao(\'' + c.id + '\',\'cancelar\')">Cancelar</button>' : ''}</td></tr>`;
+    }).join('') : '<tr><td colspan="5"><div class="empty"><b>Nenhuma campanha</b>Crie uma para avisar clientes sobre promoções, horários ou novidades.</div></td></tr>';
+  } catch (e) { toast(e.message, 'err'); }
+}
+window.acao = async (id, a) => {
+  if (a === 'cancelar' && !confirm('Cancelar a campanha? As mensagens que ainda não saíram não serão enviadas.')) return;
+  try { await api('/api/campanhas/' + id + '/' + a, { method: 'POST' }); toast({ pausar: 'Campanha pausada', retomar: 'Campanha retomada', cancelar: 'Campanha cancelada' }[a], 'ok'); carregar(); } catch (e) { toast(e.message, 'err'); }
+};
+window.ver = async (id) => {
+  try {
+    const r = await api('/api/campanhas/' + id);
+    openModal('<div class="notice" style="white-space:pre-wrap">' + escapeHtml(r.campanha.texto) + '</div><div style="max-height:50vh;overflow:auto"><table class="tbl"><thead><tr><th>Contato</th><th>Status</th><th>Mensagem enviada</th></tr></thead><tbody>' +
+      r.destinatarios.map(d => '<tr><td>' + escapeHtml(d.nome || '') + '<div class="small soft">' + fmtPhone(d.telefone) + '</div></td><td><span class="pill ' + ({ enviado: 'pill-ok', falhou: 'pill-err', pendente: 'pill-info', pausado: 'pill-warn' }[d.status] || '') + '">' + d.status + '</span>' + (d.erro ? '<div class="small soft">' + escapeHtml(d.erro) + '</div>' : '') + '</td><td class="small" style="max-width:320px;white-space:pre-wrap">' + escapeHtml(d.texto || '') + '</td></tr>').join('') + '</tbody></table></div>',
+      { title: r.campanha.nome, wide: true, footer: '<button class="btn btn-primary" onclick="closeModal()">Fechar</button>' });
+  } catch (e) { toast(e.message, 'err'); }
+};
+function filtroAtual() {
+  return { etiquetas: q('cf-tag').value.split(',').map(x => x.trim()).filter(Boolean), servicos: [...document.querySelectorAll('#cf-serv input:checked')].map(i => i.value),
+    sem_visita_dias: +q('cf-sv')?.value || 0, interagiu_dias: +q('cf-int').value || 0, sem_agendamento_futuro: q('cf-fut')?.checked || false, somente_conversaram: q('cf-conv').checked };
+}
+window.nova = () => {
+  const agenda = ['agenda', 'imobiliaria'].includes(me.account.modelo);
+  openModal(`
+    <div class="field"><label for="cn">Nome (só para você)</label><input class="input" id="cn" placeholder="Ex.: Promoção de setembro"></div>
+    <div class="field"><label for="ct">Mensagem</label><textarea class="textarea" id="ct" style="min-height:120px" placeholder="Oi {nome}! Esta semana o corte está com 20% de desconto. Quer que eu reserve um horário?"></textarea><div class="hint">Use {nome} para o primeiro nome. Todos recebem a instrução de responder SAIR para não receber mais.</div></div>
+    <label class="check" style="margin-bottom:14px"><input type="checkbox" id="cv" checked>A IA reescreve a mensagem para cada cliente (reduz o risco de bloqueio)</label>
+    <div class="section-title">Quem recebe</div>
+    <div class="row"><div class="field"><label for="cf-tag">Com etiqueta (separe por vírgula)</label><input class="input" id="cf-tag" placeholder="Ex.: vip, cliente"></div>
+      <div class="field"><label for="cf-int">Conversou nos últimos (dias)</label><input type="number" min="0" class="input" id="cf-int" placeholder="Todos"></div></div>
+    ${agenda ? '<div class="field"><label>Já fez o serviço</label><div class="checks" id="cf-serv">' + servicos.map(s => '<label class="check"><input type="checkbox" value="' + s.id + '">' + escapeHtml(s.nome) + '</label>').join('') + '</div></div><div class="row"><div class="field"><label for="cf-sv">Sem voltar há mais de (dias)</label><input type="number" min="0" class="input" id="cf-sv" placeholder="Ex.: 45"></div><div class="field" style="align-self:end"><label class="check"><input type="checkbox" id="cf-fut">Sem horário marcado</label></div></div>' : '<div id="cf-serv"></div>'}
+    <label class="check"><input type="checkbox" id="cf-conv" checked>Só quem já mandou mensagem para este número</label>
+    <div id="cprev" class="notice" style="margin-top:14px">Calculando…</div>
+    <div class="field"><label for="cd">Começar em</label><input type="datetime-local" class="input" id="cd" style="max-width:260px"><div class="hint">Em branco: começa agora (dentro do horário permitido).</div></div>`,
+    { title: 'Nova campanha', wide: true, footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="cgo">Criar campanha</button>' });
+  let t; const prev = () => { clearTimeout(t); t = setTimeout(async () => {
+    try { const r = await api('/api/campanhas/previa', { method: 'POST', body: { filtro: filtroAtual() } });
+      q('cprev').innerHTML = '<b>' + r.total + ' contato(s)</b>' + (r.total ? ' · cerca de ' + r.dias_estimados + ' dia(s) para concluir (até ' + r.config.max_dia + ' por dia, das ' + r.janela.ini + ' às ' + r.janela.fim + ')' : '') + (r.amostra.length ? '<div class="small soft" style="margin-top:4px">' + r.amostra.map(a => escapeHtml(a.nome || fmtPhone(a.telefone))).join(', ') + (r.total > r.amostra.length ? '…' : '') + '</div>' : '');
+    } catch (e) { q('cprev').textContent = e.message; } }, 300); };
+  document.querySelectorAll('.modal input').forEach(i => i.addEventListener('input', prev)); document.querySelectorAll('.modal input[type=checkbox]').forEach(i => i.addEventListener('change', prev));
+  prev();
+  q('cgo').onclick = async (ev) => {
+    const texto = q('ct').value.trim();
+    btnLoading(ev.currentTarget, true, 'Criando…');
+    try {
+      const r = await api('/api/campanhas', { method: 'POST', body: { nome: q('cn').value, texto: texto + (/sair/i.test(texto) ? '' : '\n\n_Para não receber mais, responda SAIR._'), variar: q('cv').checked, filtro: filtroAtual(), enviar_em: q('cd').value ? new Date(q('cd').value).toISOString() : null } });
+      closeModal(); toast('Campanha criada para ' + r.total + ' contato(s)', 'ok'); carregar();
+    } catch (e) { toast(e.message, 'err'); btnLoading(null, false); }
+  };
+};
+</script></body></html>

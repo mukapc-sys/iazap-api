@@ -1,0 +1,70 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Catálogo — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+let me, lista = [], cats = [], busca = '';
+const SEG = () => me.account.modelo;
+const ROT = () => ({ imobiliaria: ['Imóveis', 'imóvel', 'Novo imóvel'], delivery: ['Cardápio', 'item', 'Novo item'] }[SEG()] || ['Produtos', 'produto', 'Novo produto']);
+(async () => {
+  me = await loadMe();
+  renderShell('produtos', { title: ROT()[0] });
+  if (!['delivery', 'varejo', 'imobiliaria', 'ecommerce'].includes(SEG())) { q('content').innerHTML = '<div class="notice">Este número não usa catálogo.</div>'; return; }
+  q('topbar-actions').innerHTML = '<button class="btn btn-primary" onclick="editar()">' + icon('plus', 16) + ' ' + ROT()[2] + '</button>';
+  q('content').innerHTML = '<div class="page" style="max-width:1200px"><div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap"><input class="input" id="bq" placeholder="Buscar" style="max-width:320px"><select class="select" id="bc" style="max-width:220px"><option value="">Todas as categorias</option></select></div><div class="prod-grid" id="gr"><div class="spinner"></div></div></div>';
+  let t; q('bq').oninput = () => { clearTimeout(t); t = setTimeout(carregar, 250); }; q('bc').onchange = carregar;
+  carregar();
+})();
+async function carregar() {
+  try {
+    const p = new URLSearchParams(); if (q('bq').value.trim()) p.set('q', q('bq').value.trim()); if (q('bc').value) p.set('categoria', q('bc').value);
+    const r = await api('/api/produtos?' + p); lista = r.produtos; cats = r.categorias;
+    const sel = q('bc').value; q('bc').innerHTML = '<option value="">Todas as categorias</option>' + cats.map(c => '<option ' + (c.categoria === sel ? 'selected' : '') + '>' + escapeHtml(c.categoria) + '</option>').join('');
+    q('gr').innerHTML = lista.length ? lista.map(pr => `<div class="prod ${pr.ativo ? '' : 'off'}" onclick="editar('${pr.id}')">
+      <div class="prod-img">${pr.foto_urls[0] ? '<img src="' + escapeHtml(pr.foto_urls[0]) + '" alt="" loading="lazy">' : icon('camera', 28)}</div>
+      <div class="prod-body"><b>${escapeHtml(pr.nome)}</b><div class="small soft">${escapeHtml(pr.categoria || '')}</div>
+        <div style="margin-top:6px">${pr.preco_promo_centavos ? '<s class="soft small">' + fmtMoney(pr.preco_centavos) + '</s> <b style="display:inline">' + fmtMoney(pr.preco_promo_centavos) + '</b>' : '<b style="display:inline">' + fmtMoney(pr.preco_centavos) + '</b>'}${SEG() === 'imobiliaria' && pr.atributos.finalidade === 'aluguel' ? '<span class="small soft">/mês</span>' : ''}</div>
+        <div style="margin-top:6px">${pr.destaque ? '<span class="tag">destaque</span>' : ''}${pr.estoque !== null ? '<span class="tag">' + (pr.estoque > 0 ? pr.estoque + ' em estoque' : 'esgotado') + '</span>' : ''}${pr.ativo ? '' : '<span class="tag">inativo</span>'}</div></div></div>`).join('')
+      : '<div class="empty" style="grid-column:1/-1"><b>Nada cadastrado</b>Cadastre os ' + ROT()[0].toLowerCase() + ' que a IA vai oferecer.</div>';
+  } catch (e) { toast(e.message, 'err'); }
+}
+const CAMPOS_ATRIB = {
+  imobiliaria: [['finalidade', 'Finalidade', 'venda ou aluguel'], ['tipo', 'Tipo', 'casa, apartamento…'], ['bairro', 'Bairro'], ['quartos', 'Quartos'], ['banheiros', 'Banheiros'], ['vagas', 'Vagas'], ['area_m2', 'Área (m²)'], ['condominio', 'Condomínio'], ['iptu', 'IPTU']],
+  varejo: [['tamanhos', 'Tamanhos', 'P, M, G'], ['cores', 'Cores']], ecommerce: [['sabores', 'Variações', 'ex.: sabores, voltagem']], delivery: [],
+};
+window.editar = (id) => {
+  const pr = lista.find(x => x.id === id) || { nome: '', descricao: '', categoria: '', preco_centavos: 0, preco_promo_centavos: null, estoque: null, ativo: 1, destaque: 0, fotos: [], foto_urls: [], atributos: {}, link_externo: '' };
+  let fotos = pr.fotos.map((k, i) => ({ key: k, url: pr.foto_urls[i] }));
+  let adicionais = (pr.atributos.adicionais || []).map(a => ({ ...a }));
+  const at = CAMPOS_ATRIB[SEG()] || [];
+  openModal(`
+    <div class="field"><label>Fotos</label><div class="fotos-edit" id="pf"></div><input type="file" id="pff" class="hidden" accept="image/*" multiple></div>
+    <div class="row"><div class="field"><label for="pn">Nome</label><input class="input" id="pn" value="${escapeHtml(pr.nome)}"></div>
+      <div class="field"><label for="pc">Categoria</label><input class="input" id="pc" list="pcl" value="${escapeHtml(pr.categoria || '')}"><datalist id="pcl">${cats.map(c => '<option value="' + escapeHtml(c.categoria) + '">').join('')}</datalist></div></div>
+    <div class="row-3"><div class="field"><label for="pp">Preço (R$)${SEG() === 'imobiliaria' ? ' <span class="soft small">(aluguel: valor mensal)</span>' : ''}</label><input class="input" id="pp" inputmode="decimal" value="${pr.preco_centavos ? (pr.preco_centavos / 100).toFixed(2).replace('.', ',') : ''}"></div>
+      <div class="field"><label for="ppr">Preço promocional</label><input class="input" id="ppr" inputmode="decimal" value="${pr.preco_promo_centavos ? (pr.preco_promo_centavos / 100).toFixed(2).replace('.', ',') : ''}"></div>
+      <div class="field"><label for="pe">Estoque</label><input type="number" min="0" class="input" id="pe" value="${pr.estoque ?? ''}" placeholder="Sem controle"></div></div>
+    <div class="field"><label for="pd">Descrição</label><textarea class="textarea" id="pd" placeholder="A IA usa para explicar e recomendar">${escapeHtml(pr.descricao || '')}</textarea></div>
+    ${at.length ? '<div class="row-3">' + at.map(([k, l, ph]) => '<div class="field"><label>' + l + '</label><input class="input" data-at="' + k + '" value="' + escapeHtml(pr.atributos[k] ?? '') + '" placeholder="' + (ph || '') + '"></div>').join('') + '</div>' : ''}
+    ${SEG() === 'delivery' ? '<div class="field"><label>Adicionais</label><div id="pad"></div><button type="button" class="btn btn-sm" id="padd">Adicionar opção</button></div>' : ''}
+    ${SEG() !== 'delivery' ? '<div class="field"><label for="pl">Link</label><input class="input" id="pl" value="' + escapeHtml(pr.link_externo || '') + '" placeholder="' + (SEG() === 'ecommerce' ? 'Link de compra no site' : 'Opcional: anúncio, tour virtual…') + '"></div>' : ''}
+    <div class="checks"><label class="check"><input type="checkbox" id="pdt" ${pr.destaque ? 'checked' : ''}>Destaque</label>${id ? '<label class="check"><input type="checkbox" id="pat" ' + (pr.ativo ? 'checked' : '') + '>Ativo</label>' : ''}</div>`,
+    { title: id ? 'Editar ' + ROT()[1] : ROT()[2], wide: true, footer: (id ? '<button class="btn btn-danger" style="margin-right:auto" id="pdel">Excluir</button>' : '') + '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="pgo">Salvar</button>' });
+  const rFotos = () => { q('pf').innerHTML = fotos.map((f, i) => '<div class="f"><img src="' + escapeHtml(f.url) + '" alt=""><button type="button" data-i="' + i + '" aria-label="Remover foto">×</button></div>').join('') + (fotos.length < 8 ? '<button type="button" class="add" id="pfa">' + icon('plus', 20) + '</button>' : '');
+    q('pf').querySelectorAll('.f button').forEach(b => b.onclick = () => { fotos.splice(+b.dataset.i, 1); rFotos(); }); if (q('pfa')) q('pfa').onclick = () => q('pff').click(); };
+  rFotos();
+  q('pff').onchange = async (e) => { for (const f of [...e.target.files].slice(0, 8 - fotos.length)) { try { const up = await uploadArquivo(f, 'produto', { maxLado: 1200 }); fotos.push({ key: up.key, url: up.url }); rFotos(); } catch (err) { toast(err.message, 'err'); } } e.target.value = ''; };
+  const rAd = () => { if (!q('pad')) return; q('pad').innerHTML = adicionais.map((a, i) => '<div style="display:flex;gap:6px;margin-bottom:6px"><input class="input ad-n" value="' + escapeHtml(a.nome) + '" placeholder="Ex.: Borda catupiry"><input class="input ad-p" style="width:120px" inputmode="decimal" value="' + (a.preco_centavos ? (a.preco_centavos / 100).toFixed(2).replace('.', ',') : '') + '" placeholder="R$"><button type="button" class="btn btn-sm btn-ghost" data-i="' + i + '">×</button></div>').join('');
+    q('pad').querySelectorAll('button').forEach(b => b.onclick = () => { lerAd(); adicionais.splice(+b.dataset.i, 1); rAd(); }); };
+  const lerAd = () => { if (!q('pad')) return; const ns = [...document.querySelectorAll('.ad-n')], ps = [...document.querySelectorAll('.ad-p')]; adicionais = ns.map((n, i) => ({ nome: n.value.trim(), preco_centavos: parseMoney(ps[i].value) })).filter(a => a.nome); };
+  rAd(); if (q('padd')) q('padd').onclick = () => { lerAd(); adicionais.push({ nome: '', preco_centavos: 0 }); rAd(); };
+  q('pgo').onclick = async (ev) => {
+    lerAd();
+    const atributos = { ...pr.atributos }; document.querySelectorAll('[data-at]').forEach(i => { const v = i.value.trim(); if (v) atributos[i.dataset.at] = /^\d+$/.test(v) && ['quartos', 'banheiros', 'vagas', 'area_m2'].includes(i.dataset.at) ? +v : v; else delete atributos[i.dataset.at]; });
+    if (SEG() === 'delivery') atributos.adicionais = adicionais;
+    const body = { nome: q('pn').value, categoria: q('pc').value, preco_centavos: parseMoney(q('pp').value), preco_promo_centavos: parseMoney(q('ppr').value) || null, estoque: q('pe').value === '' ? null : +q('pe').value,
+      descricao: q('pd').value, atributos, link_externo: q('pl')?.value || '', destaque: q('pdt').checked, ativo: id ? q('pat').checked : true, fotos: fotos.map(f => f.key) };
+    btnLoading(ev.currentTarget, true, 'Salvando…');
+    try { await api('/api/produtos' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body }); closeModal(); toast('Salvo', 'ok'); carregar(); } catch (e) { toast(e.message, 'err'); btnLoading(null, false); }
+  };
+  if (q('pdel')) q('pdel').onclick = async () => { if (!confirm('Excluir? Se já estiver em pedidos, fica só inativo.')) return; try { const r = await api('/api/produtos/' + id, { method: 'DELETE' }); closeModal(); toast(r.desativado ? 'Desativado' : 'Excluído', 'ok'); carregar(); } catch (e) { toast(e.message, 'err'); } };
+};
+</script></body></html>

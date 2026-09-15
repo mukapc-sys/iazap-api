@@ -46,7 +46,7 @@ async function estado() {
       [s.whatsapp, 'WhatsApp conectado', 'whatsapp.html'],
       [s.ia_chave, 'Chave do Gemini válida', null],
       [s.empresa, 'Dados da empresa preenchidos', 'empresa.html'],
-      ...(m.account.modelo === 'agenda' ? [[s.servicos > 0 && s.profissionais > 0, 'Serviços e profissionais cadastrados', 'servicos.html']] : []),
+      ...(['agenda', 'imobiliaria'].includes(m.account.modelo) ? [[s.servicos > 0 && s.profissionais > 0, 'Serviços e profissionais cadastrados', 'servicos.html']] : []),
       [ai.ia_ativa, 'Atendimento automático ligado', null],
     ];
     q('req').innerHTML = itens.map(([ok, t, href]) => '<li><span class="ck ' + (ok ? 'done' : '') + '" style="width:20px;height:20px;font-size:11px">' + (ok ? '✓' : '') + '</span><span style="flex:1">' + t + '</span>' + (!ok && href ? '<a class="btn btn-sm" href="' + href + '">Resolver</a>' : '') + '</li>').join('')

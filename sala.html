@@ -88,7 +88,7 @@ function render() {
   const box = q('ms'); if (!box) return;
   const noFim = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
   if (!msgs.length) {
-    const exemplos = info.segmento === 'agenda' ? ['Oi, quanto custa?', 'Tem horário amanhã de manhã?', 'Quem atende aí?', 'Onde fica?'] : ['Oi!', 'Como funciona?'];
+    const exemplos = ({ agenda: ['Oi, quanto custa?', 'Tem horário amanhã de manhã?', 'Quem atende aí?', 'Onde fica?'], delivery: ['Tem pizza de calabresa?', 'Qual a taxa de entrega?', 'Quero fazer um pedido'], varejo: ['Tem vestido azul?', 'Qual o tamanho M?', 'Parcelam?'], imobiliaria: ['Quero alugar um apê de 2 quartos', 'Tem casa à venda na Zona Sul?', 'Posso visitar amanhã?'], ecommerce: ['Tem whey?', 'Qual o prazo para SP?', 'Tem cupom?'] })[info.segmento] || ['Oi!', 'Como funciona?'];
     box.innerHTML = '<div class="inicio"><b>Comece a conversa</b><br>Escreva como um cliente escreveria.<div class="sugs">' + exemplos.map(x => '<button onclick="enviar(this.textContent)">' + escapeHtml(x) + '</button>').join('') + '</div></div>';
     return;
   }

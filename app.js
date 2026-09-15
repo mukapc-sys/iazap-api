@@ -65,6 +65,8 @@ const I = {
   bike: '<circle cx="5.5" cy="17" r="3.5"/><circle cx="18.5" cy="17" r="3.5"/><path d="M5.5 17 9 9h6l3.5 8M9 9 7.5 5.5H5M15 9l-3 8"/>',
   swap: '<path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  book: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/>',
+  plug: '<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   store: '<path d="M3 9 4.5 4h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 11v10h14V11"/>',
@@ -106,16 +108,30 @@ const MODELOS = {
   delivery: {
     nome: 'Delivery', icon: 'bike',
     desc: 'Para quem recebe pedidos para entregar ou retirar.',
-    faz: ['Apresenta o cardápio', 'Monta o pedido completo', 'Combina pagamento na entrega'],
+    faz: ['Apresenta o cardápio com fotos', 'Monta o pedido completo', 'Avisa o status do pedido'],
     ex: 'Lancheria, pizzaria, marmitaria, açaí, mercado, farmácia',
-    menu: [{ key: 'pedidos', label: 'Pedidos', icon: 'bag' }, { key: 'cardapio', label: 'Cardápio', icon: 'box' }],
+    menu: [{ key: 'pedidos', label: 'Pedidos', icon: 'bag', href: 'pedidos.html' }, { key: 'produtos', label: 'Cardápio', icon: 'box', href: 'produtos.html' }],
   },
   varejo: {
     nome: 'Varejo', icon: 'store',
     desc: 'Para lojas que vendem com atendimento consultivo.',
-    faz: ['Tira dúvidas sobre produtos', 'Recomenda o que faz sentido', 'Passa para um vendedor'],
+    faz: ['Tira dúvidas sobre produtos', 'Envia fotos e recomenda', 'Passa para um vendedor'],
     ex: 'Loja de roupas, calçados, móveis, eletrônicos, autopeças',
-    menu: [{ key: 'produtos', label: 'Produtos', icon: 'box' }],
+    menu: [{ key: 'produtos', label: 'Produtos', icon: 'box', href: 'produtos.html' }],
+  },
+  imobiliaria: {
+    nome: 'Imobiliária', icon: 'building',
+    desc: 'Para imobiliárias e corretores.',
+    faz: ['Qualifica quem procura imóvel', 'Envia fotos e detalhes', 'Marca visita com o corretor'],
+    ex: 'Venda e locação de casas, apartamentos e salas',
+    menu: [{ key: 'produtos', label: 'Imóveis', icon: 'building', href: 'produtos.html' }, { key: 'agenda', label: 'Visitas', icon: 'calendar', href: 'agenda.html' }, { key: 'servicos', label: 'Corretores', icon: 'users', href: 'servicos.html' }],
+  },
+  ecommerce: {
+    nome: 'E-commerce', icon: 'bag',
+    desc: 'Para lojas online que vendem pelo site.',
+    faz: ['Tira dúvidas e manda o link', 'Recupera carrinho e boleto', 'Sabe das compras do cliente'],
+    ex: 'Loja virtual, infoprodutos, Hotmart, Kiwify, Nuvemshop',
+    menu: [{ key: 'produtos', label: 'Produtos', icon: 'box', href: 'produtos.html' }],
   },
 };
 
@@ -136,9 +152,15 @@ function renderShell(activeKey, opts = {}) {
     <div class="sb-section">${mod ? escapeHtml(mod.nome) : 'Seu negócio'}</div>
     ${(mod ? mod.menu : []).map(m => item({ ...m, soon: !m.href })).join('')}
     ${item({ key: 'empresa', label: 'Dados da empresa', icon: 'building', href: 'empresa.html' })}
+    <div class="sb-section">Automação</div>
+    ${item({ key: 'campanhas', label: 'Campanhas', icon: 'send', href: 'campanhas.html' })}
+    ${item({ key: 'automacoes', label: 'Follow-ups e envios', icon: 'clock', href: 'automacoes.html' })}
+    <div class="sb-section">Inteligência artificial</div>
+    ${item({ key: 'ia', label: 'Configurar IA', icon: 'spark', href: 'ia.html' })}
+    ${item({ key: 'conhecimento', label: 'Conhecimento', icon: 'book', href: 'conhecimento.html' })}
     <div class="sb-section">Configuração</div>
     ${item({ key: 'whatsapp', label: 'WhatsApp', icon: 'phone', href: 'whatsapp.html' }, `<span class="wa-dot ${me.setup.whatsapp ? 'on' : ''}" style="margin-left:auto;margin-right:0"></span>`)}
-    ${item({ key: 'ia', label: 'Inteligência artificial', icon: 'spark', href: 'ia.html' })}
+    ${item({ key: 'integracoes', label: 'Integrações', icon: 'plug', href: 'integracoes.html' })}
     ${item({ key: 'numeros', label: 'Números', icon: 'swap', href: 'numeros.html' })}
   `;
   const nAtual = me.numero || {};

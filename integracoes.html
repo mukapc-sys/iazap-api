@@ -1,0 +1,124 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Integrações — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+const PLAT = { hotmart: 'Hotmart', kiwify: 'Kiwify', eduzz: 'Eduzz', monetizze: 'Monetizze', generico: 'Outro sistema (webhook genérico)' };
+let cat, aba = 'entrada';
+(async () => {
+  await loadMe();
+  renderShell('integracoes', { title: 'Integrações' });
+  q('content').innerHTML = '<div class="page" style="max-width:1050px"><div class="tabs2" id="tabs"></div><div id="area"><div class="spinner"></div></div></div>';
+  cat = await api('/api/integracoes/catalogo');
+  abrir(new URLSearchParams(location.search).get('aba') || 'entrada');
+})();
+function abrir(a) {
+  aba = a;
+  q('tabs').innerHTML = [['entrada', 'Plataformas de venda'], ['saida', 'Webhooks de saída'], ['chaves', 'API']].map(([k, l]) => '<button class="' + (k === a ? 'on' : '') + '" onclick="abrir(\'' + k + '\')">' + l + '</button>').join('');
+  ({ entrada, saida, chaves })[a]();
+}
+window.abrir = abrir;
+const API_BASE = () => window.API.replace(/\/$/, '');
+
+// ---------- entrada ----------
+async function entrada() {
+  const r = await api('/api/integracoes/entrada');
+  q('area').innerHTML = '<p class="muted" style="margin-top:0">Receba eventos de compra, boleto, Pix e carrinho abandonado e responda o cliente no WhatsApp automaticamente. Cada integração gera um endereço para colar na plataforma.</p>'
+    + '<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="novaEntrada()">' + icon('plus', 16) + ' Nova integração</button></div>'
+    + (r.integracoes.length ? r.integracoes.map(h => `<div class="panel"><div class="panel-head"><div><h3>${escapeHtml(h.nome)} <span class="tag">${PLAT[h.plataforma]}</span></h3><p>${h.recebidos} evento(s) recebido(s)${h.ultimo_em ? ' · último ' + fmtRel(h.ultimo_em) : ''}</p></div>
+      <label class="switch"><input type="checkbox" ${h.ativo ? 'checked' : ''} onchange="patchE('${h.id}',{ativo:this.checked})"><span></span></label></div>
+      <div class="panel-body"><div class="field"><label>Endereço do webhook (cole na plataforma)</label><div style="display:flex;gap:8px"><input class="input" readonly value="${API_BASE()}/in/${h.token}"><button class="btn" onclick="navigator.clipboard.writeText('${API_BASE()}/in/${h.token}').then(()=>toast('Copiado','ok'))">Copiar</button></div>
+        <div class="hint">${h.plataforma === 'hotmart' ? 'Hotmart: Ferramentas → Webhook → Nova configuração. Selecione os eventos de compra, boleto/Pix e abandono de carrinho.' : h.plataforma === 'kiwify' ? 'Kiwify: Apps → Webhooks → Criar webhook, com os eventos de compra aprovada, boleto/Pix gerado e carrinho abandonado.' : h.plataforma === 'generico' ? 'Envie POST com JSON: {"evento":"compra_aprovada","telefone":"51999999999","nome":"...","produto":"...","valor":97,"link":"..."}' : 'Cadastre este endereço como URL de notificação (postback) da plataforma.'}</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" onclick="regras('${h.id}')">Mensagens por evento</button><button class="btn btn-sm" onclick="logsE('${h.id}')">Eventos recebidos</button><button class="btn btn-sm" onclick="segredo('${h.id}', ${h.tem_segredo})">${h.tem_segredo ? 'Trocar segredo' : 'Proteger com segredo'}</button><button class="btn btn-sm btn-danger" onclick="delE('${h.id}')">Excluir</button></div></div></div>`).join('')
+      : '<div class="empty"><b>Nenhuma integração</b>Conecte Hotmart, Kiwify, Eduzz, Monetizze ou qualquer sistema que envie webhook.</div>');
+}
+window.novaEntrada = () => {
+  openModal('<div class="field"><label for="ip">Plataforma</label><select class="select" id="ip">' + Object.entries(PLAT).map(([k, v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select></div><div class="field"><label for="in">Nome</label><input class="input" id="in" placeholder="Ex.: Curso principal"></div><p class="small soft">Já vem com mensagens prontas para compra aprovada, aguardando pagamento e carrinho abandonado. Ajuste depois em Mensagens por evento.</p>',
+    { title: 'Nova integração', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="igo">Criar</button>' });
+  q('igo').onclick = async () => { try { await api('/api/integracoes/entrada', { method: 'POST', body: { plataforma: q('ip').value, nome: q('in').value || PLAT[q('ip').value] } }); closeModal(); toast('Integração criada', 'ok'); entrada(); } catch (e) { toast(e.message, 'err'); } };
+};
+window.patchE = async (id, body) => { try { await api('/api/integracoes/entrada/' + id, { method: 'PATCH', body }); toast('Salvo', 'ok'); } catch (e) { toast(e.message, 'err'); } };
+window.delE = async (id) => { if (!confirm('Excluir a integração? A plataforma vai parar de conseguir enviar eventos.')) return; await api('/api/integracoes/entrada/' + id, { method: 'DELETE' }); entrada(); };
+window.segredo = (id) => {
+  openModal('<p class="muted" style="margin-top:0">Com segredo, só são aceitos eventos que enviem o mesmo valor. Na Hotmart, use o <b>Hottok</b> da sua conta. Em outros sistemas, envie no cabeçalho <code>X-IAZAP-Segredo</code> ou em <code>?segredo=</code> no endereço.</p><div class="field"><label for="sg">Segredo</label><input class="input" id="sg" placeholder="Em branco remove a proteção"></div>',
+    { title: 'Segredo da integração', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="sgo">Salvar</button>' });
+  q('sgo').onclick = async () => { await patchE(id, { segredo: q('sg').value }); closeModal(); entrada(); };
+};
+window.regras = async (id) => {
+  const h = (await api('/api/integracoes/entrada')).integracoes.find(x => x.id === id);
+  const rg = { ...cat.regras_padrao, ...JSON.parse(h.regras_json || '{}') };
+  openModal('<p class="small soft" style="margin-top:0">Variáveis: {nome}, {produto}, {valor}, {link}, {email}. No modo IA, escreva a instrução e a IA cria a mensagem com os dados do evento. Carrinho abandonado e assinatura cancelada respeitam o horário de envio e o SAIR.</p>' +
+    Object.entries(cat.eventos_entrada).map(([k, l]) => { const x = rg[k] || {}; return `<div class="regra ${x.ativo ? '' : 'off'}" data-ev="${k}"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px"><label class="check"><input type="checkbox" class="r-a" ${x.ativo ? 'checked' : ''}><b>${l}</b></label>
+      <select class="select r-m" style="width:auto;padding:4px 8px"><option value="fixo" ${x.modo !== 'ia' ? 'selected' : ''}>Texto fixo</option><option value="ia" ${x.modo === 'ia' ? 'selected' : ''}>IA escreve</option></select>
+      <span class="small soft">depois de</span><input type="number" min="0" class="input r-t" style="width:80px" value="${x.atraso_min || 0}"><span class="small soft">min</span>
+      <span class="small soft">etiqueta</span><input class="input r-e" style="width:170px" value="${escapeHtml(x.etiqueta || '')}"></div>
+      <textarea class="textarea r-x" style="min-height:64px">${escapeHtml(x.texto || '')}</textarea></div>`; }).join(''),
+    { title: 'Mensagens por evento', wide: true, footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="rgo">Salvar</button>' });
+  q('rgo').onclick = async () => {
+    const regras = {}; document.querySelectorAll('[data-ev]').forEach(d => { regras[d.dataset.ev] = { ativo: d.querySelector('.r-a').checked, modo: d.querySelector('.r-m').value, atraso_min: +d.querySelector('.r-t').value, etiqueta: d.querySelector('.r-e').value, texto: d.querySelector('.r-x').value }; });
+    try { await api('/api/integracoes/entrada/' + id, { method: 'PATCH', body: { regras } }); closeModal(); toast('Mensagens salvas', 'ok'); } catch (e) { toast(e.message, 'err'); }
+  };
+};
+window.logsE = async (id) => {
+  const r = await api('/api/integracoes/entrada/' + id + '/logs');
+  openModal(r.logs.length ? '<div style="max-height:60vh;overflow:auto"><table class="tbl"><thead><tr><th>Quando</th><th>Evento</th><th>Cliente</th><th>Resultado</th></tr></thead><tbody>' + r.logs.map(l => '<tr><td class="small">' + fmtDate(l.criado_em) + '</td><td class="small"><b>' + escapeHtml(cat.eventos_entrada[l.evento] || l.evento) + '</b><div class="soft">' + escapeHtml(l.evento_original || '') + '</div></td><td class="small">' + escapeHtml(l.nome || '') + '<div class="soft">' + fmtPhone(l.telefone) + '</div>' + escapeHtml(l.produto || '') + ' ' + escapeHtml(l.valor || '') + '</td><td class="small">' + escapeHtml(l.resultado || '') + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="empty"><b>Nenhum evento ainda</b>Faça uma compra de teste na plataforma ou use o botão de teste dela.</div>',
+    { title: 'Eventos recebidos', wide: true, footer: '<button class="btn btn-primary" onclick="closeModal()">Fechar</button>' });
+};
+
+// ---------- saída ----------
+async function saida() {
+  const r = await api('/api/integracoes/saida');
+  q('area').innerHTML = '<p class="muted" style="margin-top:0">Envie para outro sistema (CRM, planilha, n8n, Make, Zapier) o que acontece neste número. Cada envio é assinado com HMAC-SHA256 no cabeçalho <code>X-IAZAP-Assinatura</code>. Se o sistema não responder, tentamos de novo até 5 vezes.</p>'
+    + '<div style="margin-bottom:12px"><button class="btn btn-primary" onclick="novoWebhook()">' + icon('plus', 16) + ' Novo webhook</button></div>'
+    + (r.webhooks.length ? r.webhooks.map(w => `<div class="panel"><div class="panel-head"><div><h3>${escapeHtml(w.nome || w.url)}</h3><p style="word-break:break-all">${escapeHtml(w.url)}</p></div><label class="switch"><input type="checkbox" ${w.ativo ? 'checked' : ''} onchange="patchW('${w.id}',{ativo:this.checked})"><span></span></label></div>
+      <div class="panel-body"><div class="small" style="margin-bottom:8px">Eventos: ${JSON.parse(w.eventos_json).map(e => e === '*' ? 'todos' : escapeHtml(cat.eventos_saida[e] || e)).join(', ')}</div>
+      <div class="small soft" style="margin-bottom:8px">${w.ultimo_em ? 'Último envio ' + fmtRel(w.ultimo_em) + ': ' + (w.ultimo_erro ? '<span style="color:var(--danger)">' + escapeHtml(w.ultimo_erro) + '</span>' : 'HTTP ' + w.ultimo_status) : 'Nenhum envio ainda'}${w.falhas ? ' · ' + w.falhas + ' falha(s)' : ''}</div>
+      <div class="field"><label>Segredo da assinatura</label><div style="display:flex;gap:8px"><input class="input" readonly value="${escapeHtml(w.segredo)}"><button class="btn" onclick="navigator.clipboard.writeText('${w.segredo}').then(()=>toast('Copiado','ok'))">Copiar</button></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" onclick="testarW('${w.id}')">Enviar teste</button><button class="btn btn-sm" onclick="entregas('${w.id}')">Histórico</button>${w.falhas ? '<button class="btn btn-sm" onclick="reenviarW(\'' + w.id + '\')">Reenviar falhas</button>' : ''}<button class="btn btn-sm btn-danger" onclick="delW('${w.id}')">Excluir</button></div></div></div>`).join('')
+      : '<div class="empty"><b>Nenhum webhook</b>Crie um para mandar marcações, clientes novos e pedidos para outro sistema.</div>');
+}
+window.novoWebhook = () => {
+  openModal('<div class="field"><label for="wu">URL (https)</label><input class="input" id="wu" placeholder="https://..."></div><div class="field"><label for="wn">Nome</label><input class="input" id="wn" placeholder="Ex.: n8n, CRM"></div><div class="field"><label>Eventos</label><label class="check" style="margin-bottom:8px"><input type="checkbox" id="wall">Todos os eventos</label><div class="checks" id="wev">' + Object.entries(cat.eventos_saida).map(([k, l]) => '<label class="check"><input type="checkbox" value="' + k + '">' + l + '</label>').join('') + '</div></div>',
+    { title: 'Novo webhook', wide: true, footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="wgo">Criar</button>' });
+  q('wgo').onclick = async () => {
+    const eventos = q('wall').checked ? ['*'] : [...document.querySelectorAll('#wev input:checked')].map(i => i.value);
+    try { await api('/api/integracoes/saida', { method: 'POST', body: { url: q('wu').value.trim(), nome: q('wn').value, eventos } }); closeModal(); toast('Webhook criado', 'ok'); saida(); } catch (e) { toast(e.message, 'err'); }
+  };
+};
+window.patchW = async (id, body) => { try { await api('/api/integracoes/saida/' + id, { method: 'PATCH', body }); toast('Salvo', 'ok'); } catch (e) { toast(e.message, 'err'); } };
+window.delW = async (id) => { if (!confirm('Excluir o webhook?')) return; await api('/api/integracoes/saida/' + id, { method: 'DELETE' }); saida(); };
+window.testarW = async (id) => { try { const r = await api('/api/integracoes/saida/' + id + '/testar', { method: 'POST' }); toast(r.ok ? 'Teste entregue (HTTP ' + r.status + ')' : 'Falhou: ' + r.erro, r.ok ? 'ok' : 'err'); saida(); } catch (e) { toast(e.message, 'err'); } };
+window.reenviarW = async (id) => { await api('/api/integracoes/saida/' + id + '/reenviar', { method: 'POST' }); toast('Reenvio em até 1 minuto', 'ok'); saida(); };
+window.entregas = async (id) => {
+  const r = await api('/api/integracoes/saida/' + id + '/entregas');
+  openModal(r.entregas.length ? '<div style="max-height:60vh;overflow:auto"><table class="tbl"><thead><tr><th>Quando</th><th>Evento</th><th>Status</th><th>Tentativas</th></tr></thead><tbody>' + r.entregas.map(d => '<tr><td class="small">' + fmtDate(d.criado_em) + '</td><td class="small">' + escapeHtml(cat.eventos_saida[d.evento] || d.evento) + '</td><td><span class="pill ' + ({ entregue: 'pill-ok', falhou: 'pill-err', pendente: 'pill-info' }[d.status] || '') + '">' + d.status + '</span><div class="small soft">' + escapeHtml(d.erro || '') + '</div></td><td class="small">' + d.tentativas + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="empty"><b>Nada enviado ainda</b></div>',
+    { title: 'Histórico de envios', wide: true, footer: '<button class="btn btn-primary" onclick="closeModal()">Fechar</button>' });
+};
+
+// ---------- chaves ----------
+async function chaves() {
+  const r = await api('/api/integracoes/chaves');
+  const B = API_BASE();
+  q('area').innerHTML = `<p class="muted" style="margin-top:0">Para sistemas externos enviarem mensagens, criarem contatos e marcações neste número. A chave dá acesso só a este número.</p>
+    <div style="margin-bottom:12px"><button class="btn btn-primary" onclick="novaChave()">${icon('plus', 16)} Nova chave</button></div>
+    <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Nome</th><th>Chave</th><th>Último uso</th><th>Status</th><th></th></tr></thead><tbody>${r.chaves.length ? r.chaves.map(k => '<tr><td>' + escapeHtml(k.nome) + '</td><td><code>' + escapeHtml(k.prefixo) + '…</code></td><td class="small">' + (k.ultimo_uso_em ? fmtRel(k.ultimo_uso_em) : 'nunca') + '</td><td>' + (k.revogada ? '<span class="pill">Revogada</span>' : '<span class="pill pill-ok">Ativa</span>') + '</td><td style="text-align:right">' + (k.revogada ? '' : '<button class="btn btn-sm btn-danger" onclick="revogar(\'' + k.id + '\')">Revogar</button>') + '</td></tr>').join('') : '<tr><td colspan="5"><div class="empty"><b>Nenhuma chave</b></div></td></tr>'}</tbody></table></div>
+    <div class="panel"><div class="panel-head"><div><h3>Como usar</h3></div></div><div class="panel-body">
+    <div class="small" style="margin-bottom:6px"><b>Enviar mensagem</b> (cria o contato se não existir; com <code>enviar_em</code> em ISO, programa o envio)</div>
+    <div class="codebox">POST ${B}/api/v1/mensagens
+Authorization: Bearer izk_...
+Content-Type: application/json
+
+{"telefone": "51999999999", "texto": "Olá! Seu pedido foi aprovado."}</div>
+    <div class="small" style="margin:12px 0 6px"><b>Criar ou atualizar contato</b></div>
+    <div class="codebox">POST ${B}/api/v1/contatos
+{"telefone": "51999999999", "nome": "Maria", "etiquetas": ["lead site"]}</div>
+    <div class="small" style="margin:12px 0 6px"><b>Também disponível</b>: GET /api/contacts · GET /api/services · GET /api/professionals · GET /api/agenda?data=AAAA-MM-DD · GET /api/agenda/disponibilidade · POST /api/appointments · PATCH /api/appointments/{id} · GET /api/produtos · GET /api/pedidos · PATCH /api/pedidos/{id}</div></div></div>`;
+}
+window.novaChave = () => {
+  openModal('<div class="field"><label for="kn">Nome</label><input class="input" id="kn" placeholder="Ex.: n8n, site"></div>', { title: 'Nova chave de API', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="kgo">Gerar chave</button>' });
+  q('kgo').onclick = async () => {
+    try { const r = await api('/api/integracoes/chaves', { method: 'POST', body: { nome: q('kn').value } });
+      openModal('<div class="notice notice-warn">Copie agora. Por segurança, a chave não aparece de novo.</div><div style="display:flex;gap:8px"><input class="input" readonly value="' + r.chave + '"><button class="btn btn-primary" onclick="navigator.clipboard.writeText(\'' + r.chave + '\').then(()=>toast(\'Copiada\',\'ok\'))">Copiar</button></div>', { title: 'Chave criada', footer: '<button class="btn" onclick="closeModal()">Fechar</button>' });
+      chaves(); } catch (e) { toast(e.message, 'err'); }
+  };
+};
+window.revogar = async (id) => { if (!confirm('Revogar a chave? Os sistemas que usam ela param de funcionar.')) return; await api('/api/integracoes/chaves/' + id, { method: 'DELETE' }); chaves(); };
+</script></body></html>

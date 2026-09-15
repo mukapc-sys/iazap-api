@@ -53,7 +53,7 @@ let grade = null, servicos = [], verCancelados = false;
 (async () => {
   const me = await loadMe();
   renderShell('agenda', { title: 'Agenda' });
-  if (me.account.modelo !== 'agenda') { q('content').innerHTML = '<div class="notice">Esta tela é do modelo Agenda de serviços.</div>'; return; }
+  if (!['agenda', 'imobiliaria'].includes(me.account.modelo)) { q('content').innerHTML = '<div class="notice">Esta tela é do modelo Agenda de serviços.</div>'; return; }
   q('topbar-actions').innerHTML = '<button class="btn" onclick="modalBloqueio()">Bloquear horário</button><button class="btn btn-primary" onclick="modalNovo()">Nova marcação</button>';
   q('content').innerHTML = `
     <div class="ag-bar">

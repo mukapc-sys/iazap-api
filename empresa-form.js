@@ -39,6 +39,20 @@ const EXTRAS = {
     { k: 'envio', l: 'Formas de envio ou retirada', t: 'textarea', ph: 'Ex.: retirada na loja, motoboy na cidade, Correios para fora.' },
     { k: 'quando_vendedor', l: 'Quando passar a conversa para um vendedor', t: 'textarea', ph: 'Ex.: pedidos acima de R$ 1.000, orçamento para empresas, reclamações.' },
   ],
+  imobiliaria: [
+    { k: 'creci', l: 'CRECI', t: 'input', ph: 'Ex.: CRECI 12.345-J' },
+    { k: 'regiao', l: 'Região de atuação', t: 'input', ph: 'Ex.: Zona Sul de Porto Alegre' },
+    { k: 'passo_agenda', l: 'Intervalo entre visitas', t: 'select', op: ['30', '60', '90'], rot: { '30': 'A cada 30 min', '60': 'A cada 1 hora', '90': 'A cada 1h30' } },
+    { k: 'antecedencia_horas', l: 'Antecedência mínima para visita (horas)', t: 'input', ph: 'Ex.: 3' },
+    { k: 'obs_agendamento', l: 'Orientações para a visita', t: 'textarea', ph: 'Ex.: levar documento com foto.' },
+    { k: 'oferecer_lembrete', l: 'A IA oferece lembrete da visita?', t: 'select', op: ['Sim', 'Não'] },
+  ],
+  ecommerce: [
+    { k: 'frete', l: 'Frete', t: 'textarea', ph: 'Ex.: grátis acima de R$ 199; abaixo, calculado no checkout.' },
+    { k: 'prazo_entrega', l: 'Prazo de entrega', t: 'input', ph: 'Ex.: 3 a 7 dias úteis no Sul e Sudeste' },
+    { k: 'politica_troca', l: 'Troca e devolução', t: 'textarea', ph: 'Ex.: até 7 dias após o recebimento.' },
+    { k: 'cupom', l: 'Cupom ativo', t: 'input', ph: 'Ex.: PRIMEIRA10 dá 10% na primeira compra' },
+  ],
 };
 
 function bizForm(el, { modelo, compact = false, onSaved } = {}) {

@@ -123,7 +123,7 @@ function renderMsgs(manterScroll) {
     const d = parseDate(m.criado_em), ds = d.toLocaleDateString('pt-BR');
     if (ds !== dia) { dia = ds; html += '<div class="conv-day">' + (ds === hoje ? 'Hoje' : ds === ontem ? 'Ontem' : ds) + '</div>'; }
     const out = m.direcao === 'out';
-    const who = !out ? '' : m.autor === 'ia' ? '<div class="who">IA</div>' : m.autor === 'celular' ? '<div class="who phone">Pelo celular</div>' : m.autor === 'lembrete' ? '<div class="who">Lembrete automático</div>' : m.autor === 'agendada' ? '<div class="who">Programada' + (m.atendente ? ' por ' + escapeHtml(m.atendente) : '') + '</div>' : m.atendente ? '<div class="who">' + escapeHtml(m.atendente) + '</div>' : '';
+    const who = !out ? '' : m.autor === 'ia' ? '<div class="who">IA</div>' : m.autor === 'celular' ? '<div class="who phone">Pelo celular</div>' : m.autor === 'lembrete' ? '<div class="who">Lembrete automático</div>' : m.autor === 'followup' ? '<div class="who">Follow-up automático</div>' : m.autor === 'campanha' ? '<div class="who">Campanha</div>' : m.autor === 'integracao' ? '<div class="who">Integração</div>' : m.autor === 'sistema' ? '<div class="who">Aviso automático</div>' : m.autor === 'agendada' ? '<div class="who">Programada' + (m.atendente ? ' por ' + escapeHtml(m.atendente) : '') + '</div>' : m.atendente ? '<div class="who">' + escapeHtml(m.atendente) + '</div>' : '';
     const st = out ? ({ enviado: ' ✓', entregue: ' ✓✓', lida: ' ✓✓', falhou: ' · falhou' }[m.status] || '') : '';
     const md = midiaHtml(m), txt = textoSemRotulo(m);
     html += `<div class="bubble ${out ? 'out' : 'in'} ${m.status === 'falhou' ? 'fail' : ''}" ${m.erro ? 'title="' + escapeHtml(m.erro) + '"' : ''}>${who}${md}${txt ? '<div class="txt">' + escapeHtml(txt) + '</div>' : ''}<div class="meta">${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${st}</div></div>`;
@@ -273,10 +273,14 @@ function renderSide() {
     <h4>Etiquetas</h4><div id="sd-tags"></div>
     <input class="input" id="sd-tg" placeholder="Nova etiqueta e Enter" style="margin-top:4px">
     <h4>Anotações</h4><textarea class="textarea" id="sd-nota" placeholder="Visível só para a equipe">${escapeHtml(c.nota || '')}</textarea>
+    <h4>O que a IA lembra deste cliente</h4><textarea class="textarea" id="sd-mem" placeholder="A IA preenche sozinha com preferências e histórico" style="min-height:80px">${escapeHtml(c.memoria || '')}</textarea>
+    <div class="side-toggle" style="margin-top:12px"><div><div style="font-weight:600;color:var(--ink);font-size:13px">Recebe campanhas e follow-ups</div><div class="small soft">${c.optout ? 'Pediu para não receber' : 'Sim'}</div></div>
+      <label class="switch"><input type="checkbox" ${c.optout ? '' : 'checked'} onchange="patch({ optout: !this.checked }).then(() => { toast(this.checked ? 'Voltou a receber' : 'Não recebe mais campanhas', 'ok'); })"><span></span></label></div>
     <div style="margin-top:18px"><button class="btn btn-sm btn-block" onclick="arquivar()">${c.arquivado ? 'Desarquivar conversa' : 'Arquivar conversa'}</button></div>`;
   renderTags();
   q('sd-n').onchange = (e) => patch({ nome: e.target.value }).then(lista);
   q('sd-nota').onchange = (e) => patch({ nota: e.target.value }).then(() => toast('Anotação salva', 'ok'));
+  q('sd-mem').onchange = (e) => patch({ memoria: e.target.value }).then(() => toast('Memória da IA atualizada', 'ok'));
   q('sd-tg').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); const v = e.target.value.trim(); if (!v) return; contato.tags = [...new Set([...(contato.tags || []), v])]; e.target.value = ''; renderTags(); patch({ tags: contato.tags }); } };
 }
 function renderTags() {

@@ -21,7 +21,7 @@ let servicos = [], profs = [];
 (async () => {
   const me = await loadMe();
   renderShell('servicos', { title: 'Serviços e equipe' });
-  if (me.account.modelo !== 'agenda') { q('content').innerHTML = '<div class="notice">Esta tela é do modelo Agenda de serviços.</div>'; return; }
+  if (!['agenda', 'imobiliaria'].includes(me.account.modelo)) { q('content').innerHTML = '<div class="notice">Esta tela é do modelo Agenda de serviços.</div>'; return; }
   q('content').innerHTML = `<div class="page" style="max-width:980px">
     <div class="panel"><div class="panel-head"><div><h3>Profissionais</h3><p>Quem atende, em que dias e horários, e quais serviços faz.</p></div><button class="btn btn-primary" onclick="modalProf()">Adicionar profissional</button></div>
       <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Nome</th><th>Serviços</th><th>Dias de trabalho</th><th></th></tr></thead><tbody id="tp"></tbody></table></div></div>
@@ -68,11 +68,21 @@ window.modalServ = (id) => {
     </div>
     <div class="field"><label for="sv-ds">Descrição</label><input class="input" id="sv-ds" value="${escapeHtml(s.descricao || '')}" placeholder="Opcional. A IA usa para explicar o serviço."></div>
     <div class="field"><label>Quem faz este serviço</label><div class="checks" id="sv-pr">${profs.length ? profs.map(p => '<label class="check"><input type="checkbox" value="' + p.id + '" ' + (s.profissionais.includes(p.id) ? 'checked' : '') + '>' + escapeHtml(p.nome) + '</label>').join('') : '<span class="small soft">Cadastre profissionais primeiro.</span>'}</div></div>
-    ${id ? '<label class="check"><input type="checkbox" id="sv-a" ' + (s.ativo ? 'checked' : '') + '>Serviço ativo</label>' : ''}`,
+    <div class="regra ${s.followup_ativo ? '' : 'off'}" id="fu-box" style="margin-top:6px">
+      <label class="check" style="margin-bottom:8px"><input type="checkbox" id="fu-a" ${s.followup_ativo ? 'checked' : ''}><b>Follow-up depois do atendimento</b></label>
+      <div id="fu-c" class="${s.followup_ativo ? '' : 'hidden'}">
+        <div class="row"><div class="field"><label for="fu-d">Quantos dias depois</label><input type="number" min="1" max="365" class="input" id="fu-d" value="${s.followup_dias || 20}"></div>
+          <div class="field"><label for="fu-m">Mensagem</label><select class="select" id="fu-m"><option value="fixo" ${s.followup_modo !== 'ia' ? 'selected' : ''}>Texto fixo</option><option value="ia" ${s.followup_modo === 'ia' ? 'selected' : ''}>A IA escreve</option></select></div></div>
+        <textarea class="textarea" id="fu-t" style="min-height:70px">${escapeHtml(s.followup_texto || '')}</textarea>
+        <div class="hint" id="fu-h"></div></div></div>
+    ${id ? '<label class="check" style="margin-top:10px"><input type="checkbox" id="sv-a" ' + (s.ativo ? 'checked' : '') + '>Serviço ativo</label>' : ''}`,
     { title: id ? 'Editar serviço' : 'Novo serviço', footer: (id ? '<button class="btn btn-danger" style="margin-right:auto" id="sv-del">Remover</button>' : '') + '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="sv-go">Salvar serviço</button>' });
+  const fuH = () => { const ia = q('fu-m').value === 'ia'; q('fu-t').placeholder = ia ? 'Instrução para a IA. Ex.: convidar para retocar o degradê e oferecer os horários da semana' : 'Oi {nome}! Já faz {dias} dias do seu {servico} com {profissional}. Quer que eu reserve um horário?'; q('fu-h').textContent = ia ? 'A IA escreve uma mensagem personalizada com o histórico do cliente.' : 'Variáveis: {nome}, {servico}, {profissional}, {dias}, {empresa}.'; };
+  fuH(); q('fu-m').onchange = fuH;
+  q('fu-a').onchange = (e) => { q('fu-c').classList.toggle('hidden', !e.target.checked); q('fu-box').classList.toggle('off', !e.target.checked); };
   q('sv-go').onclick = async (ev) => {
     btnLoading(ev.currentTarget, true, 'Salvando…');
-    const body = { nome: q('sv-n').value, preco_centavos: parseMoney(q('sv-p').value), duracao_min: +q('sv-d').value, descricao: q('sv-ds').value, profissionais: [...document.querySelectorAll('#sv-pr input:checked')].map(i => i.value), ativo: id ? q('sv-a').checked : true };
+    const body = { nome: q('sv-n').value, preco_centavos: parseMoney(q('sv-p').value), duracao_min: +q('sv-d').value, descricao: q('sv-ds').value, followup_ativo: q('fu-a').checked, followup_dias: +q('fu-d').value, followup_modo: q('fu-m').value, followup_texto: q('fu-t').value, profissionais: [...document.querySelectorAll('#sv-pr input:checked')].map(i => i.value), ativo: id ? q('sv-a').checked : true };
     try { await api('/api/services' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body }); closeModal(); toast('Serviço salvo', 'ok'); carregar(); }
     catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
   };

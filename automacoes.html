@@ -1,0 +1,48 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Follow-ups e envios — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+let cfg, me;
+(async () => {
+  me = await loadMe();
+  renderShell('automacoes', { title: 'Follow-ups e envios' });
+  q('topbar-actions').innerHTML = '<button class="btn btn-primary" id="sv">Salvar alterações</button>';
+  q('content').innerHTML = '<div class="page" id="pg"><div class="spinner"></div></div>';
+  try { cfg = (await api('/api/automacoes')).config; } catch (e) { q('pg').innerHTML = '<div class="notice notice-err">' + escapeHtml(e.message) + '</div>'; return; }
+  const agenda = ['agenda', 'imobiliaria'].includes(me.account.modelo);
+  q('pg').innerHTML = `
+    <div class="panel"><div class="panel-head"><div><h3>Horário dos envios automáticos</h3><p>Follow-ups, "na trave", recuperação e campanhas só saem nesta janela. Lembretes de horário saem sempre.</p></div></div>
+      <div class="panel-body"><div class="row" style="max-width:360px"><div class="field"><label for="ji">Das</label><input type="time" class="input" id="ji" value="${cfg.janela.ini}"></div><div class="field"><label for="jf">Até</label><input type="time" class="input" id="jf" value="${cfg.janela.fim}"></div></div><div class="hint">Permitido entre 07:00 e 22:00.</div></div></div>
+    <div class="panel"><div class="panel-head"><div><h3>Follow-up "na trave"</h3><p>Quando o cliente pede horário ou produto e não fecha, a IA volta a chamar. Para sozinho se ele responder, marcar ou comprar.</p></div><label class="switch"><input type="checkbox" id="tv" ${cfg.trave.ativo ? 'checked' : ''}><span></span></label></div>
+      <div class="panel-body" id="tent"></div></div>
+    ${agenda ? '<div class="panel"><div class="panel-head"><div><h3>Follow-up depois do atendimento</h3><p>Configurado em cada serviço (Serviços e equipe → editar serviço). Ex.: 20 dias depois do corte, chamar o cliente para voltar. O atendimento conta como realizado quando passa o horário; marque Faltou na agenda se o cliente não veio.</p></div><a class="btn" href="servicos.html">Configurar serviços</a></div></div>' : ''}
+    <div class="panel"><div class="panel-head"><div><h3>Limites de campanha</h3><p>Protegem o número contra bloqueio do WhatsApp.</p></div></div>
+      <div class="panel-body"><div class="row-3"><div class="field"><label for="md">Máximo por dia</label><input type="number" min="1" max="300" class="input" id="md" value="${cfg.campanha.max_dia}"><div class="hint">Até 300.</div></div>
+        <div class="field"><label for="imin">Intervalo mínimo (s)</label><input type="number" min="20" class="input" id="imin" value="${cfg.campanha.intervalo_min}"><div class="hint">Mínimo 20 s.</div></div>
+        <div class="field"><label for="imax">Intervalo máximo (s)</label><input type="number" min="20" max="900" class="input" id="imax" value="${cfg.campanha.intervalo_max}"></div></div></div></div>
+    <div class="panel"><div class="panel-head"><div><h3>Resposta a quem pede para sair</h3><p>Quando o cliente responde SAIR ou PARAR, deixa de receber campanhas e follow-ups.</p></div></div>
+      <div class="panel-body"><textarea class="textarea" id="ot">${escapeHtml(cfg.optout_texto)}</textarea></div></div>`;
+  renderTent();
+  q('sv').onclick = salvar;
+})();
+function renderTent() {
+  q('tent').innerHTML = cfg.trave.tentativas.map((t, i) => `<div class="regra"><div style="display:flex;gap:10px;align-items:center;margin-bottom:8px"><b>Tentativa ${i + 1}</b><span class="soft small">depois de</span>
+    <input type="number" min="1" max="168" class="input tv-h" value="${t.horas}" style="width:80px"> <span class="soft small">hora(s)</span>
+    ${cfg.trave.tentativas.length > 1 ? '<button class="btn btn-sm btn-ghost" style="margin-left:auto" onclick="remT(' + i + ')">Remover</button>' : ''}</div>
+    <textarea class="textarea tv-i" style="min-height:60px" placeholder="O que a IA deve dizer">${escapeHtml(t.instrucao)}</textarea></div>`).join('')
+    + (cfg.trave.tentativas.length < 3 ? '<button class="btn btn-sm" onclick="addT()">Adicionar tentativa</button>' : '');
+}
+function lerTent() { const hs = [...document.querySelectorAll('.tv-h')], is = [...document.querySelectorAll('.tv-i')]; cfg.trave.tentativas = hs.map((h, i) => ({ horas: +h.value, instrucao: is[i].value })); }
+window.addT = () => { lerTent(); cfg.trave.tentativas.push({ horas: 72, instrucao: 'Faça um último contato leve, sem insistir.' }); renderTent(); };
+window.remT = (i) => { lerTent(); cfg.trave.tentativas.splice(i, 1); renderTent(); };
+async function salvar(ev) {
+  lerTent();
+  btnLoading(ev.currentTarget, true, 'Salvando…');
+  try {
+    const r = await api('/api/automacoes', { method: 'PUT', body: { janela: { ini: q('ji').value, fim: q('jf').value }, trave: { ativo: q('tv').checked, tentativas: cfg.trave.tentativas },
+      campanha: { max_dia: +q('md').value, intervalo_min: +q('imin').value, intervalo_max: +q('imax').value }, optout_texto: q('ot').value } });
+    cfg = r.config; toast('Alterações salvas', 'ok');
+    q('md').value = cfg.campanha.max_dia; q('imin').value = cfg.campanha.intervalo_min; q('imax').value = cfg.campanha.intervalo_max; q('ji').value = cfg.janela.ini; q('jf').value = cfg.janela.fim;
+  } catch (e) { toast(e.message, 'err'); }
+  btnLoading(null, false);
+}
+</script></body></html>

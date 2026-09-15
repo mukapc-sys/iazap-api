@@ -1,0 +1,56 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Base de conhecimento — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+const TIPO = { texto: 'Texto', link: 'Página da internet', pdf: 'PDF' };
+(async () => {
+  await loadMe();
+  renderShell('conhecimento', { title: 'Base de conhecimento' });
+  q('topbar-actions').innerHTML = '<button class="btn" onclick="novo(\'link\')">Adicionar link</button><button class="btn" onclick="novo(\'pdf\')">Enviar PDF</button><button class="btn btn-primary" onclick="novo(\'texto\')">Adicionar texto</button>';
+  q('content').innerHTML = `<div class="page" style="max-width:1000px">
+    <p class="muted" style="margin:0 0 14px">Materiais que a IA consulta para responder: tabelas de preço, regulamentos, cardápio em PDF, página de perguntas do site, políticas. Vale para este número. A IA não inventa: se a resposta não estiver aqui nem nos dados da empresa, ela passa para um humano.</p>
+    <div id="uso" class="small soft" style="margin-bottom:10px"></div>
+    <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Material</th><th>Tipo</th><th>Tamanho</th><th>Status</th><th>Usar</th><th></th></tr></thead><tbody id="tb"><tr><td colspan="6"><div class="spinner"></div></td></tr></tbody></table></div></div>`;
+  carregar();
+})();
+async function carregar() {
+  try {
+    const r = await api('/api/conhecimento');
+    q('uso').textContent = r.total_caracteres.toLocaleString('pt-BR') + ' caracteres ativos. ' + (r.total_caracteres > r.limite_integral ? 'Acima de ' + r.limite_integral.toLocaleString('pt-BR') + ', a IA usa os trechos mais relacionados a cada pergunta.' : 'Tudo vai inteiro para a IA.');
+    q('tb').innerHTML = r.itens.length ? r.itens.map(i => `<tr>
+      <td><a href="#" onclick="ver('${i.id}');return false" style="font-weight:600;color:var(--ink)">${escapeHtml(i.titulo || i.url || 'Sem título')}</a>${i.url ? '<div class="small soft">' + escapeHtml(i.url) + '</div>' : ''}</td>
+      <td class="small">${TIPO[i.tipo]}</td><td class="small">${i.tamanho ? i.tamanho.toLocaleString('pt-BR') + ' car.' : '—'}</td>
+      <td>${i.status === 'pronto' ? '<span class="pill pill-ok">Pronto</span>' : i.status === 'processando' ? '<span class="pill pill-info">Lendo…</span>' : '<span class="pill pill-err" title="' + escapeHtml(i.erro || '') + '">Erro</span><div class="small soft">' + escapeHtml(i.erro || '') + '</div>'}</td>
+      <td><label class="switch"><input type="checkbox" ${i.ativo ? 'checked' : ''} onchange="ativo('${i.id}', this.checked)"><span></span></label></td>
+      <td style="text-align:right;white-space:nowrap">${i.status === 'erro' && i.tipo !== 'texto' ? '<button class="btn btn-sm" onclick="repro(\'' + i.id + '\')">Tentar de novo</button>' : ''}<button class="btn btn-sm btn-danger" onclick="del('${i.id}')">Excluir</button></td></tr>`).join('')
+      : '<tr><td colspan="6"><div class="empty"><b>Nenhum material ainda</b>Adicione textos, links ou PDFs com as informações do negócio.</div></td></tr>';
+    if (r.itens.some(i => i.status === 'processando')) setTimeout(carregar, 4000);
+  } catch (e) { toast(e.message, 'err'); }
+}
+window.novo = (tipo) => {
+  const corpo = tipo === 'texto' ? '<div class="field"><label for="kt">Título</label><input class="input" id="kt" placeholder="Ex.: Política de trocas"></div><div class="field"><label for="kc">Conteúdo</label><textarea class="textarea" id="kc" style="min-height:220px"></textarea></div>'
+    : tipo === 'link' ? '<div class="field"><label for="ku">Endereço da página</label><input class="input" id="ku" placeholder="https://..."><div class="hint">A IA lê o texto da página agora. Se a página mudar, clique em Tentar de novo depois de excluir e adicionar outra vez.</div></div>'
+    : '<div class="field"><label for="kt">Título</label><input class="input" id="kt" placeholder="Ex.: Tabela de preços 2026"></div><div class="field"><label for="kf">Arquivo PDF (até 15 MB)</label><input type="file" class="input" id="kf" accept="application/pdf"><div class="hint">O Gemini transcreve o PDF. Pode levar até 1 minuto.</div></div>';
+  openModal(corpo, { title: { texto: 'Adicionar texto', link: 'Adicionar link', pdf: 'Enviar PDF' }[tipo], wide: tipo === 'texto', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="kgo">Adicionar</button>' });
+  q('kgo').onclick = async (ev) => {
+    btnLoading(ev.currentTarget, true, 'Enviando…');
+    try {
+      let body = { tipo };
+      if (tipo === 'texto') body = { tipo, titulo: q('kt').value, conteudo: q('kc').value };
+      if (tipo === 'link') body = { tipo, url: q('ku').value.trim() };
+      if (tipo === 'pdf') { const f = q('kf').files[0]; if (!f) throw new Error('Escolha o PDF'); const up = await uploadArquivo(f, 'conhecimento'); body = { tipo, titulo: q('kt').value || f.name.replace(/\.pdf$/i, ''), media_key: up.key }; }
+      await api('/api/conhecimento', { method: 'POST', body }); closeModal(); toast(tipo === 'texto' ? 'Texto adicionado' : 'Recebido. A IA está lendo o material.', 'ok'); carregar();
+    } catch (e) { toast(e.message, 'err'); btnLoading(null, false); }
+  };
+};
+window.ver = async (id) => {
+  try {
+    const r = await api('/api/conhecimento/' + id); const it = r.item;
+    openModal(it.tipo === 'texto' ? '<div class="field"><label for="et">Título</label><input class="input" id="et" value="' + escapeHtml(it.titulo || '') + '"></div><textarea class="textarea" id="ec" style="min-height:320px">' + escapeHtml(it.conteudo || '') + '</textarea>' : '<p class="small soft" style="margin-top:0">Texto que a IA leu deste material:</p><div style="white-space:pre-wrap;max-height:60vh;overflow:auto;font-size:13px;background:var(--bg);padding:12px;border-radius:8px">' + escapeHtml(it.conteudo || it.erro || '') + '</div>',
+      { title: it.titulo || 'Material', wide: true, footer: it.tipo === 'texto' ? '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="esv">Salvar texto</button>' : '<button class="btn btn-primary" onclick="closeModal()">Fechar</button>' });
+    if (q('esv')) q('esv').onclick = async () => { try { await api('/api/conhecimento/' + id, { method: 'PATCH', body: { titulo: q('et').value, conteudo: q('ec').value } }); closeModal(); toast('Texto salvo', 'ok'); carregar(); } catch (e) { toast(e.message, 'err'); } };
+  } catch (e) { toast(e.message, 'err'); }
+};
+window.ativo = async (id, v) => { try { await api('/api/conhecimento/' + id, { method: 'PATCH', body: { ativo: v } }); toast(v ? 'A IA volta a usar este material' : 'A IA deixa de usar este material', 'ok'); carregar(); } catch (e) { toast(e.message, 'err'); } };
+window.repro = async (id) => { try { await api('/api/conhecimento/' + id + '/reprocessar', { method: 'POST' }); carregar(); } catch (e) { toast(e.message, 'err'); } };
+window.del = async (id) => { if (!confirm('Excluir este material da base?')) return; try { await api('/api/conhecimento/' + id, { method: 'DELETE' }); toast('Material excluído', 'ok'); carregar(); } catch (e) { toast(e.message, 'err'); } };
+</script></body></html>
