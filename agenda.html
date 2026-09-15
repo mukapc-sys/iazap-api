@@ -1,0 +1,281 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Agenda — IA ZAP</title>
+<style>
+.ag-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.ag-day{font-size:17px;font-weight:700;color:var(--ink);margin:0 6px}
+.ag-sum{margin-left:auto;display:flex;gap:16px;font-size:13px;color:var(--ink-mute)}
+.ag-sum b{color:var(--ink)}
+.ag-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--r2);overflow:auto;max-height:calc(100vh - 170px)}
+.ag-grid{display:grid;min-width:max-content;position:relative}
+.ag-head{position:sticky;top:0;z-index:3;background:var(--surface);border-bottom:1px solid var(--line);padding:10px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:8px;min-width:190px}
+.ag-head.corner{min-width:58px;left:0;z-index:4}
+.ag-dot{width:10px;height:10px;border-radius:99px;flex-shrink:0}
+.ag-times{position:sticky;left:0;z-index:2;background:var(--surface);border-right:1px solid var(--line)}
+.ag-time{font-size:11px;color:var(--ink-soft);text-align:right;padding-right:8px;transform:translateY(-7px)}
+.ag-col{position:relative;border-right:1px solid var(--line-2);cursor:copy}
+.ag-line{position:absolute;left:0;right:0;border-top:1px solid var(--line-2)}
+.ag-line.hour{border-top-color:var(--line)}
+.ag-off{position:absolute;left:0;right:0;background:repeating-linear-gradient(-45deg,var(--surface-2),var(--surface-2) 6px,var(--bg) 6px,var(--bg) 12px);cursor:not-allowed}
+.ag-block{position:absolute;left:4px;right:4px;border-radius:6px;background:repeating-linear-gradient(-45deg,#E9E2D5,#E9E2D5 6px,#F4EFE6 6px,#F4EFE6 12px);border:1px dashed #BCAE93;font-size:11px;color:#6B5B3E;padding:3px 6px;cursor:pointer;overflow:hidden;z-index:1}
+.ag-ev{position:absolute;left:4px;right:4px;border-radius:6px;padding:4px 7px;font-size:12px;line-height:1.25;overflow:hidden;cursor:pointer;z-index:2;border-left:4px solid var(--c);background:color-mix(in srgb,var(--c) 14%,#fff);color:var(--ink)}
+.ag-ev:hover{box-shadow:0 2px 8px rgba(14,42,33,.18)}
+.ag-ev b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-ev .s{color:var(--ink-mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-ev.st-confirmado{background:color-mix(in srgb,var(--c) 30%,#fff)}
+.ag-ev.st-concluido{background:var(--surface-2);border-left-color:var(--ink-soft);color:var(--ink-mute)}
+.ag-ev.st-faltou{background:var(--danger-lt);border-left-color:var(--danger)}
+.ag-ev.st-cancelado{background:#fff;border:1px dashed var(--line);border-left:4px solid var(--line);color:var(--ink-soft);text-decoration:line-through;opacity:.8}
+.ag-ev .ia{float:right;font-size:10px;font-weight:700;color:var(--brand-dark);background:var(--brand-lt);border-radius:99px;padding:0 5px;margin-left:4px}
+.ag-now{position:absolute;left:0;right:0;border-top:2px solid var(--danger);z-index:3;pointer-events:none}
+.ag-now:before{content:"";position:absolute;left:-4px;top:-5px;width:8px;height:8px;border-radius:99px;background:var(--danger)}
+.slots{display:flex;flex-wrap:wrap;gap:6px}
+.slot{border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:5px 11px;font-size:13px;font-weight:600;color:var(--ink-2)}
+.slot:hover{border-color:var(--brand)}
+.slot.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.slot-group{margin-bottom:10px}
+.slot-group .small{margin-bottom:5px;font-weight:600;color:var(--ink-mute)}
+.cli-res{border:1px solid var(--line);border-radius:var(--r);margin-top:4px;max-height:180px;overflow:auto}
+.cli-res div{padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--line-2)}
+.cli-res div:hover{background:var(--bg)}
+.st-btns{display:flex;gap:6px;flex-wrap:wrap}
+.det{display:grid;grid-template-columns:110px 1fr;gap:6px 12px;font-size:14px;margin-bottom:14px}
+.det span{color:var(--ink-mute)}
+</style></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+const PX = 1.4; // pixels por minuto
+const ST = { agendado: 'Agendado', confirmado: 'Confirmado', concluido: 'Concluído', faltou: 'Faltou', cancelado: 'Cancelado' };
+const STPILL = { agendado: 'pill-info', confirmado: 'pill-ok', concluido: '', faltou: 'pill-err', cancelado: '' };
+let dia = new URLSearchParams(location.search).get('data') || hojeISO();
+let grade = null, servicos = [], verCancelados = false;
+
+(async () => {
+  const me = await loadMe();
+  renderShell('agenda', { title: 'Agenda' });
+  if (me.account.modelo !== 'agenda') { q('content').innerHTML = '<div class="notice">Esta tela é do modelo Agenda de serviços.</div>'; return; }
+  q('topbar-actions').innerHTML = '<button class="btn" onclick="modalBloqueio()">Bloquear horário</button><button class="btn btn-primary" onclick="modalNovo()">Nova marcação</button>';
+  q('content').innerHTML = `
+    <div class="ag-bar">
+      <button class="btn btn-sm" onclick="mudarDia(-1)" aria-label="Dia anterior">‹</button>
+      <button class="btn btn-sm" onclick="irHoje()">Hoje</button>
+      <button class="btn btn-sm" onclick="mudarDia(1)" aria-label="Próximo dia">›</button>
+      <input type="date" class="input" id="ag-d" style="width:auto;padding:5px 8px">
+      <span class="ag-day" id="ag-l"></span>
+      <label class="check" style="padding:4px 10px"><input type="checkbox" id="ag-c">Mostrar cancelados</label>
+      <div class="ag-sum" id="ag-s"></div>
+    </div>
+    <div class="ag-wrap" id="ag-w"><div class="empty"><div class="spinner"></div></div></div>`;
+  q('ag-d').onchange = (e) => { if (e.target.value) { dia = e.target.value; carregar(); } };
+  q('ag-c').onchange = (e) => { verCancelados = e.target.checked; render(); };
+  try { servicos = (await api('/api/services')).servicos.filter(s => s.ativo); } catch { }
+  carregar();
+  setInterval(() => { if (!document.hidden && !q('modal-ov')?.classList.contains('open')) carregar(true); }, 30000);
+})();
+
+window.mudarDia = (n) => { const [y, m, d] = dia.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1, d + n)); dia = t.toISOString().slice(0, 10); carregar(); };
+window.irHoje = () => { dia = hojeISO(); carregar(); };
+
+async function carregar(silencioso) {
+  q('ag-d').value = dia; q('ag-l').textContent = cap(fmtDiaLongo(dia));
+  history.replaceState(null, '', '?data=' + dia);
+  if (!silencioso) q('ag-w').innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  try { grade = await api('/api/agenda?data=' + dia); render(); }
+  catch (e) { q('ag-w').innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>'; }
+}
+
+function render() {
+  const g = grade, profs = g.profissionais;
+  const ativos = g.agendamentos.filter(a => !['cancelado', 'faltou'].includes(a.status));
+  q('ag-s').innerHTML = '<span><b>' + ativos.length + '</b> marcações</span><span>Previsto <b>' + fmtMoney(ativos.reduce((s, a) => s + a.preco_centavos, 0)) + '</b></span>';
+  if (!profs.length) { q('ag-w').innerHTML = '<div class="empty"><b>Nenhum profissional ativo</b>Cadastre a equipe em <a href="servicos.html" style="text-decoration:underline">Serviços e equipe</a>.</div>'; return; }
+
+  let ini = 24 * 60, fim = 0;
+  profs.forEach(p => { if (p.horario?.ativo) { ini = Math.min(ini, hm2min(p.horario.ini)); fim = Math.max(fim, hm2min(p.horario.fim)); } });
+  g.agendamentos.concat(g.bloqueios).forEach(x => { ini = Math.min(ini, x.inicio_min); fim = Math.max(fim, x.fim_min); });
+  if (fim <= ini) { ini = 8 * 60; fim = 19 * 60; }
+  ini = Math.floor(ini / 60) * 60; fim = Math.ceil(fim / 60) * 60;
+  const H = (fim - ini) * PX, y = (m) => (m - ini) * PX;
+
+  const linhas = []; for (let t = ini; t <= fim; t += 30) linhas.push(t);
+  const times = '<div class="ag-times" style="height:' + H + 'px;position:relative">' + linhas.filter(t => t % 60 === 0 && t < fim).map(t => '<div class="ag-time" style="position:absolute;top:' + y(t) + 'px;right:0;left:0">' + min2hm(t) + '</div>').join('') + '</div>';
+  const grid = linhas.map(t => '<div class="ag-line ' + (t % 60 === 0 ? 'hour' : '') + '" style="top:' + y(t) + 'px"></div>').join('');
+
+  const agora = new Date(), nowMin = agora.getHours() * 60 + agora.getMinutes();
+  const nowLine = dia === hojeISO() && nowMin >= ini && nowMin <= fim ? '<div class="ag-now" style="top:' + y(nowMin) + 'px"></div>' : '';
+
+  const cols = profs.map(p => {
+    const h = p.horario, off = [];
+    const empFechada = g.empresa && g.empresa.aberto === false;
+    if (!h?.ativo || empFechada) off.push([ini, fim]);
+    else {
+      off.push([ini, hm2min(h.ini)], [hm2min(h.fim), fim]);
+      if (h.int_ini && h.int_fim) off.push([hm2min(h.int_ini), hm2min(h.int_fim)]);
+    }
+    const offHtml = off.filter(([a, b]) => b > a).map(([a, b]) => '<div class="ag-off" style="top:' + y(a) + 'px;height:' + (b - a) * PX + 'px"></div>').join('');
+    const blocks = g.bloqueios.filter(b => !b.professional_id || b.professional_id === p.id).map(b =>
+      '<div class="ag-block" style="top:' + y(b.inicio_min) + 'px;height:' + Math.max(18, (b.fim_min - b.inicio_min) * PX) + 'px" onclick="event.stopPropagation();verBloqueio(\'' + b.id + '\')">Bloqueado' + (b.motivo ? ' · ' + escapeHtml(b.motivo) : '') + '</div>').join('');
+    const evs = g.agendamentos.filter(a => a.professional_id === p.id && (verCancelados || a.status !== 'cancelado')).map(a => {
+      const hgt = Math.max(22, (a.fim_min - a.inicio_min) * PX - 2);
+      return '<div class="ag-ev st-' + a.status + '" style="--c:' + escapeHtml(p.cor || '#14A152') + ';top:' + (y(a.inicio_min) + 1) + 'px;height:' + hgt + 'px" onclick="event.stopPropagation();verAg(\'' + a.id + '\')" title="' + escapeHtml(a.cliente_nome + ' · ' + (a.servico_nome || '')) + '">'
+        + (a.origem === 'ia' ? '<span class="ia">IA</span>' : '') + '<b>' + min2hm(a.inicio_min) + ' ' + escapeHtml(a.cliente_nome) + '</b>'
+        + (hgt > 34 ? '<div class="s">' + escapeHtml(a.servico_nome || '') + (a.status !== 'agendado' ? ' · ' + ST[a.status] : '') + '</div>' : '') + '</div>';
+    }).join('');
+    return '<div class="ag-col" style="height:' + H + 'px" data-p="' + p.id + '">' + grid + offHtml + blocks + evs + nowLine + '</div>';
+  });
+
+  q('ag-w').innerHTML = '<div class="ag-grid" style="grid-template-columns:58px repeat(' + profs.length + ',minmax(190px,1fr))">'
+    + '<div class="ag-head corner"></div>' + profs.map(p => '<div class="ag-head">' + (p.foto_url ? '<img class="av-sm" src="' + escapeHtml(p.foto_url) + '" alt="" style="box-shadow:0 0 0 2px ' + escapeHtml(p.cor || '#14A152') + '">' : '<span class="ag-dot" style="background:' + escapeHtml(p.cor || '#14A152') + '"></span>') + escapeHtml(p.nome) + (p.horario?.ativo ? '' : ' <span class="pill" style="margin-left:auto">Folga</span>') + '</div>').join('')
+    + times + cols.join('') + '</div>';
+
+  q('ag-w').querySelectorAll('.ag-col').forEach(col => col.addEventListener('click', (e) => {
+    if (e.target.classList.contains('ag-off')) return;
+    const r = col.getBoundingClientRect();
+    const m = ini + Math.floor(((e.clientY - r.top) / PX) / 15) * 15;
+    modalNovo({ profissional: col.dataset.p, hora: min2hm(m) });
+  }));
+  if (!q('ag-w').dataset.rolou) { q('ag-w').dataset.rolou = 1; const alvo = dia === hojeISO() ? nowMin - 60 : ini; q('ag-w').scrollTop = Math.max(0, y(alvo)); }
+}
+
+// ---------- nova marcação ----------
+window.modalNovo = (pre = {}) => {
+  if (!servicos.length) { toast('Cadastre serviços primeiro', 'err'); return; }
+  let cli = null, escolha = { profissional: pre.profissional || null, hora: pre.hora || null }, encaixe = false, buscaT = null;
+  openModal(`
+    <div class="field"><label for="nv-c">Cliente</label>
+      <input class="input" id="nv-c" placeholder="Buscar contato ou digitar nome" autocomplete="off">
+      <div id="nv-cr"></div>
+      <input class="input" id="nv-t" placeholder="WhatsApp do cliente (opcional)" inputmode="tel" style="margin-top:6px">
+    </div>
+    <div class="row">
+      <div class="field"><label for="nv-s">Serviço</label><select class="select" id="nv-s">${servicos.map(s => '<option value="' + s.id + '">' + escapeHtml(s.nome) + ' · ' + s.duracao_min + ' min · ' + fmtMoney(s.preco_centavos) + '</option>').join('')}</select></div>
+      <div class="field"><label for="nv-d">Data</label><input type="date" class="input" id="nv-d" value="${dia}"></div>
+    </div>
+    <div class="field"><label>Horário</label><div id="nv-h"></div>
+      <button type="button" class="btn btn-sm btn-ghost" id="nv-enc" style="margin-top:6px">Fazer encaixe fora dos horários livres</button>
+      <div id="nv-encbox" class="hidden row" style="margin-top:6px">
+        <select class="select" id="nv-ep"></select><input type="time" class="input" id="nv-eh" value="${pre.hora || ''}">
+      </div>
+    </div>
+    <div class="field"><label for="nv-o">Observação</label><input class="input" id="nv-o"></div>`,
+    { title: 'Nova marcação', wide: true, footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="nv-go">Marcar horário</button>' });
+
+  if (pre.profissional) { const s = servicos.find(s => s.profissionais.includes(pre.profissional)); if (s) q('nv-s').value = s.id; }
+  q('nv-c').oninput = () => {
+    cli = null; clearTimeout(buscaT);
+    const v = q('nv-c').value.trim(); if (v.length < 2) { q('nv-cr').innerHTML = ''; return; }
+    buscaT = setTimeout(async () => {
+      try {
+        const r = await api('/api/contacts?q=' + encodeURIComponent(v));
+        q('nv-cr').innerHTML = r.contatos.length ? '<div class="cli-res">' + r.contatos.slice(0, 6).map(c => '<div data-id="' + c.id + '">' + escapeHtml(c.nome || '') + ' <span class="soft small">' + fmtPhone(c.telefone) + '</span></div>').join('') + '</div>' : '';
+        q('nv-cr').querySelectorAll('[data-id]').forEach(el => el.onclick = () => {
+          const c = r.contatos.find(x => x.id === el.dataset.id); cli = c;
+          q('nv-c').value = c.nome || fmtPhone(c.telefone); q('nv-t').value = fmtPhone(c.telefone); q('nv-cr').innerHTML = '';
+        });
+      } catch { }
+    }, 250);
+  };
+  const encProfs = () => { const s = servicos.find(x => x.id === q('nv-s').value); q('nv-ep').innerHTML = grade.profissionais.filter(p => s.profissionais.includes(p.id)).map(p => '<option value="' + p.id + '" ' + (p.id === escolha.profissional ? 'selected' : '') + '>' + escapeHtml(p.nome) + '</option>').join(''); };
+  const slots = async () => {
+    q('nv-h').innerHTML = '<div class="spinner" style="margin:6px 0"></div>'; encProfs();
+    try {
+      const r = await api('/api/agenda/disponibilidade?servico=' + q('nv-s').value + '&data=' + q('nv-d').value);
+      const grupos = r.profissionais.filter(p => p.horarios.length);
+      if (!r.profissionais.length) { q('nv-h').innerHTML = '<div class="notice notice-warn" style="margin:0">Nenhum profissional faz este serviço. Ajuste em Serviços e equipe.</div>'; return; }
+      if (!grupos.length) { q('nv-h').innerHTML = '<div class="notice notice-warn" style="margin:0">Sem horários livres neste dia. Escolha outra data ou faça um encaixe.</div>'; return; }
+      q('nv-h').innerHTML = grupos.map(p => '<div class="slot-group"><div class="small">' + escapeHtml(p.nome) + '</div><div class="slots">' + p.horarios.map(h => '<button type="button" class="slot ' + (p.id === escolha.profissional && h === escolha.hora ? 'on' : '') + '" data-p="' + p.id + '" data-h="' + h + '">' + h + '</button>').join('') + '</div></div>').join('');
+      q('nv-h').querySelectorAll('.slot').forEach(b => b.onclick = () => { escolha = { profissional: b.dataset.p, hora: b.dataset.h }; q('nv-h').querySelectorAll('.slot').forEach(x => x.classList.toggle('on', x === b)); });
+    } catch (e) { q('nv-h').innerHTML = '<div class="notice notice-err" style="margin:0">' + escapeHtml(e.message) + '</div>'; }
+  };
+  q('nv-s').onchange = slots; q('nv-d').onchange = slots;
+  q('nv-enc').onclick = () => { encaixe = !encaixe; q('nv-encbox').classList.toggle('hidden', !encaixe); q('nv-h').style.opacity = encaixe ? .35 : 1; q('nv-enc').textContent = encaixe ? 'Voltar aos horários livres' : 'Fazer encaixe fora dos horários livres'; };
+  slots();
+  q('nv-go').onclick = async (ev) => {
+    const body = { servico_id: q('nv-s').value, data: q('nv-d').value, cliente_nome: q('nv-c').value.trim(), cliente_telefone: q('nv-t').value, contact_id: cli?.id || null, obs: q('nv-o').value };
+    if (encaixe) { body.profissional_id = q('nv-ep').value; body.hora = q('nv-eh').value; body.forcar = true; }
+    else { body.profissional_id = escolha.profissional; body.hora = escolha.hora; }
+    if (!body.cliente_nome) return toast('Informe o cliente', 'err');
+    if (!body.profissional_id || !body.hora) return toast('Escolha um horário', 'err');
+    btnLoading(ev.currentTarget, true, 'Marcando…');
+    try { await api('/api/appointments', { method: 'POST', body }); closeModal(); toast('Horário marcado', 'ok'); dia = body.data; carregar(); }
+    catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); slots(); }
+  };
+};
+
+// ---------- detalhe / status / remarcar ----------
+window.verAg = (id) => {
+  const a = grade.agendamentos.find(x => x.id === id); if (!a) return;
+  openModal(`
+    <div class="det">
+      <span>Cliente</span><b>${escapeHtml(a.cliente_nome)}</b>
+      <span>WhatsApp</span><div>${a.cliente_telefone ? fmtPhone(a.cliente_telefone) : '—'}</div>
+      <span>Serviço</span><div>${escapeHtml(a.servico_nome || '')} · ${fmtMoney(a.preco_centavos)}</div>
+      <span>Profissional</span><div>${escapeHtml(a.profissional_nome || '')}</div>
+      <span>Horário</span><div>${fmtDiaLongo(a.data)}, ${min2hm(a.inicio_min)} às ${min2hm(a.fim_min)}</div>
+      <span>Status</span><div><span class="pill ${STPILL[a.status]}">${ST[a.status]}</span> <span class="small soft">${a.origem === 'ia' ? 'marcado pela IA' : 'marcado manualmente'}</span></div>
+      ${a.obs ? '<span>Observação</span><div>' + escapeHtml(a.obs) + '</div>' : ''}
+    </div>
+    <div class="field"><label>Mudar status</label><div class="st-btns">
+      ${['confirmado', 'concluido', 'faltou', 'cancelado', 'agendado'].filter(s => s !== a.status).map(s => '<button class="btn btn-sm ' + (s === 'cancelado' ? 'btn-danger' : '') + '" onclick="setStatus(\'' + a.id + '\',\'' + s + '\')">' + ({ agendado: 'Voltar para agendado', confirmado: 'Confirmar', concluido: 'Concluído', faltou: 'Faltou', cancelado: 'Cancelar' })[s] + '</button>').join('')}
+    </div></div>
+    <div id="rm"></div>`,
+    { title: 'Marcação', wide: true, footer: (a.contact_id ? '<a class="btn" style="margin-right:auto" href="inbox.html?c=' + a.contact_id + '">Abrir conversa</a>' : '') + '<button class="btn" id="rm-b">Remarcar</button><button class="btn btn-primary" onclick="closeModal()">Fechar</button>' });
+  q('rm-b').onclick = () => remarcar(a);
+};
+window.setStatus = async (id, status) => {
+  if (status === 'cancelado' && !confirm('Cancelar esta marcação? O horário fica livre de novo.')) return;
+  try { await api('/api/appointments/' + id, { method: 'PATCH', body: { status } }); closeModal(); toast('Status: ' + ST[status], 'ok'); carregar(true); }
+  catch (e) { toast(e.message, 'err'); }
+};
+function remarcar(a) {
+  let escolha = null;
+  const s = servicos.find(x => x.id === a.service_id);
+  q('rm').innerHTML = `<div class="panel" style="margin:0"><div class="panel-body">
+    <h3 style="margin-bottom:10px">Remarcar</h3>
+    <div class="field"><label for="rm-d">Nova data</label><input type="date" class="input" id="rm-d" value="${a.data}" style="max-width:200px"></div>
+    <div id="rm-h"></div>
+    <button class="btn btn-primary" id="rm-go" style="margin-top:10px">Confirmar remarcação</button></div></div>`;
+  q('rm-b').disabled = true;
+  const slots = async () => {
+    q('rm-h').innerHTML = '<div class="spinner" style="margin:6px 0"></div>';
+    try {
+      const r = await api('/api/agenda/disponibilidade?servico=' + a.service_id + '&data=' + q('rm-d').value + '&ignorar=' + a.id);
+      const g = r.profissionais.filter(p => p.horarios.length);
+      q('rm-h').innerHTML = g.length ? g.map(p => '<div class="slot-group"><div class="small">' + escapeHtml(p.nome) + '</div><div class="slots">' + p.horarios.map(h => '<button type="button" class="slot" data-p="' + p.id + '" data-h="' + h + '">' + h + '</button>').join('') + '</div></div>').join('') : '<div class="notice notice-warn" style="margin:0">Sem horários livres neste dia.</div>';
+      q('rm-h').querySelectorAll('.slot').forEach(b => b.onclick = () => { escolha = { profissional_id: b.dataset.p, hora: b.dataset.h }; q('rm-h').querySelectorAll('.slot').forEach(x => x.classList.toggle('on', x === b)); });
+    } catch (e) { q('rm-h').innerHTML = '<div class="notice notice-err" style="margin:0">' + escapeHtml(e.message) + '</div>'; }
+  };
+  q('rm-d').onchange = slots; slots();
+  q('rm-go').onclick = async (ev) => {
+    if (!escolha) return toast('Escolha o novo horário', 'err');
+    btnLoading(ev.currentTarget, true, 'Remarcando…');
+    try { await api('/api/appointments/' + a.id, { method: 'PATCH', body: { data: q('rm-d').value, ...escolha } }); closeModal(); toast('Marcação remarcada', 'ok'); dia = q('rm-d').value; carregar(); }
+    catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); slots(); }
+  };
+}
+
+// ---------- bloqueios ----------
+window.modalBloqueio = () => {
+  openModal(`
+    <div class="field"><label for="bl-p">Profissional</label><select class="select" id="bl-p"><option value="">Todos (empresa fechada)</option>${grade.profissionais.map(p => '<option value="' + p.id + '">' + escapeHtml(p.nome) + '</option>').join('')}</select></div>
+    <div class="row-3">
+      <div class="field"><label for="bl-d">Data</label><input type="date" class="input" id="bl-d" value="${dia}"></div>
+      <div class="field"><label for="bl-i">De</label><input type="time" class="input" id="bl-i" value="12:00"></div>
+      <div class="field"><label for="bl-f">Até</label><input type="time" class="input" id="bl-f" value="13:00"></div>
+    </div>
+    <div class="field"><label for="bl-m">Motivo</label><input class="input" id="bl-m" placeholder="Ex.: consulta médica, folga"></div>
+    <p class="small soft">Para bloquear o dia inteiro, use de 00:00 até 23:59. A IA não oferece horários bloqueados.</p>`,
+    { title: 'Bloquear horário', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="bl-go">Bloquear horário</button>' });
+  q('bl-go').onclick = async (ev) => {
+    btnLoading(ev.currentTarget, true, 'Salvando…');
+    try { await api('/api/blocks', { method: 'POST', body: { profissional_id: q('bl-p').value || null, data: q('bl-d').value, inicio: q('bl-i').value, fim: q('bl-f').value, motivo: q('bl-m').value } }); closeModal(); toast('Horário bloqueado', 'ok'); dia = q('bl-d').value; carregar(); }
+    catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
+  };
+};
+window.verBloqueio = (id) => {
+  const b = grade.bloqueios.find(x => x.id === id); if (!b) return;
+  const p = grade.profissionais.find(x => x.id === b.professional_id);
+  openModal('<div class="det"><span>Quem</span><div>' + (p ? escapeHtml(p.nome) : 'Todos') + '</div><span>Horário</span><div>' + min2hm(b.inicio_min) + ' às ' + min2hm(b.fim_min) + '</div><span>Motivo</span><div>' + escapeHtml(b.motivo || '—') + '</div></div>',
+    { title: 'Bloqueio', footer: '<button class="btn btn-danger" id="bl-del">Remover bloqueio</button><button class="btn btn-primary" onclick="closeModal()">Fechar</button>' });
+  q('bl-del').onclick = async () => { try { await api('/api/blocks/' + id, { method: 'DELETE' }); closeModal(); toast('Bloqueio removido', 'ok'); carregar(true); } catch (e) { toast(e.message, 'err'); } };
+};
+</script>
+</body></html>

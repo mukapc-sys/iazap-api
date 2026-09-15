@@ -69,6 +69,9 @@ const I = {
   check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   back: '<path d="M15 5 8 12l7 7"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
+  camera: '<path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
 };
 function icon(name, size = 18) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[name] || ''}</svg>`;
@@ -90,7 +93,7 @@ const MODELOS = {
     desc: 'Para quem trabalha com hora marcada.',
     faz: ['Consulta horários livres', 'Agenda, remarca e cancela', 'Lembra o cliente do horário'],
     ex: 'Barbearia, salão, clínica, dentista, oficina, estética',
-    menu: [{ key: 'agenda', label: 'Agenda', icon: 'calendar' }, { key: 'servicos', label: 'Serviços', icon: 'scissors' }],
+    menu: [{ key: 'agenda', label: 'Agenda', icon: 'calendar', href: 'agenda.html' }, { key: 'servicos', label: 'Serviços e equipe', icon: 'scissors', href: 'servicos.html' }],
   },
   delivery: {
     nome: 'Delivery', icon: 'bike',
@@ -122,7 +125,7 @@ function renderShell(activeKey, opts = {}) {
     ${item({ key: 'inbox', label: 'Conversas', icon: 'chat', href: 'inbox.html' }, '<span class="sb-badge hidden" id="sb-unread"></span>')}
     ${item({ key: 'contatos', label: 'Contatos', icon: 'users', href: 'contatos.html' })}
     <div class="sb-section">${mod ? escapeHtml(mod.nome) : 'Seu negócio'}</div>
-    ${(mod ? mod.menu : []).map(m => item({ ...m, soon: true })).join('')}
+    ${(mod ? mod.menu : []).map(m => item({ ...m, soon: !m.href })).join('')}
     ${item({ key: 'empresa', label: 'Dados da empresa', icon: 'building', href: 'empresa.html' })}
     <div class="sb-section">Configuração</div>
     ${item({ key: 'whatsapp', label: 'WhatsApp', icon: 'phone', href: 'whatsapp.html' }, `<span class="wa-dot ${me.setup.whatsapp ? 'on' : ''}" style="margin-left:auto;margin-right:0"></span>`)}
@@ -242,6 +245,40 @@ function fmtPhone(s) {
   if (t.length === 12) return `(${t.slice(2, 4)}) ${t.slice(4, 8)}-${t.slice(8)}`;
   return t;
 }
+function fmtMoney(c) { return (Number(c || 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+function parseMoney(v) { const n = parseFloat(String(v || '').replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); return isNaN(n) ? 0 : Math.round(n * 100); }
+function min2hm(n) { return String(Math.floor(n / 60)).padStart(2, '0') + ':' + String(n % 60).padStart(2, '0'); }
+function hm2min(s) { const m = /^(\d{1,2}):(\d{2})$/.exec(s || ''); return m ? +m[1] * 60 + +m[2] : null; }
+function hojeISO() { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); }
+function fmtDiaLongo(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }); }
+function fmtBytes(n) { n = Number(n || 0); return n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1024 / 1024).toFixed(1).replace('.', ',') + ' MB'; }
+
+// Envia um arquivo para o R2. destino: 'profissional' | 'produto' | 'conversa'
+// Imagens são reduzidas no navegador antes de subir.
+async function uploadArquivo(file, destino, { maxLado } = {}) {
+  let blob = file, tipo = (file.type || '').split(';')[0], nome = file.name || 'arquivo';
+  if (!tipo) throw new Error('Não foi possível reconhecer o tipo do arquivo');
+  if (tipo.startsWith('image/') && tipo !== 'image/gif') {
+    try {
+      const lado = maxLado || (destino === 'conversa' ? 1600 : 800);
+      const bmp = await createImageBitmap(file);
+      const esc = Math.min(1, lado / Math.max(bmp.width, bmp.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(bmp.width * esc); cv.height = Math.round(bmp.height * esc);
+      const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(bmp, 0, 0, cv.width, cv.height);
+      const b = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+      if (b && b.size < file.size) { blob = b; tipo = 'image/jpeg'; nome = nome.replace(/\.[^.]+$/, '') + '.jpg'; }
+    } catch { }
+  }
+  let r;
+  try {
+    r = await fetch(window.API + '/api/media?destino=' + destino, { method: 'POST', headers: { Authorization: 'Bearer ' + IZ.token(), 'Content-Type': tipo, 'X-File-Name': encodeURIComponent(nome) }, body: blob });
+  } catch { throw new Error('Sem conexão com o servidor. Verifique sua internet.'); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(cap(d.error || 'Falha ao enviar arquivo'));
+  return d;
+}
+
 function initial(s) { return escapeHtml((String(s || '?').trim().charAt(0) || '?').toUpperCase()); }
 function btnLoading(btn, on, txt) {
   if (!btn) return;

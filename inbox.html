@@ -86,8 +86,12 @@ function renderConversa() {
     ${c.ia_pausada ? '<div class="conv-bar"><span>Atendimento humano: a IA não responde nesta conversa.</span><button class="btn btn-sm" onclick="setIA(false)">Devolver para a IA</button></div>' : ''}
     <div class="conv-scroll" id="cv-s"></div>
     <div class="conv-input">
-      <button class="icon-btn" title="Enviar arquivo por link" aria-label="Enviar arquivo" onclick="modalMidia()">${icon('clip', 22)}</button>
+      <button class="icon-btn" title="Enviar foto, vídeo ou documento" aria-label="Anexar arquivo" onclick="q('cv-f').click()">${icon('clip', 22)}</button>
+      <input type="file" id="cv-f" class="hidden" accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip">
       <textarea id="cv-t" rows="1" placeholder="Digite uma mensagem" aria-label="Mensagem"></textarea>
+      <span class="rec-time hidden" id="cv-rt"></span>
+      <button class="icon-btn hidden" id="cv-rx" title="Descartar gravação" aria-label="Descartar gravação">${icon('x', 20)}</button>
+      <button class="icon-btn" id="cv-mic" title="Gravar áudio" aria-label="Gravar áudio">${icon('mic', 21)}</button>
       <button class="icon-btn send" id="cv-go" aria-label="Enviar">${icon('send', 20)}</button>
     </div>`;
   if (matchMedia('(max-width:860px)').matches) { q('cv-back').style.display = 'grid'; q('cv-back').onclick = () => { ativo = null; q('ix').classList.remove('has-conv'); renderLista(); }; }
@@ -95,6 +99,10 @@ function renderConversa() {
   t.addEventListener('input', () => { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; });
   t.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } });
   q('cv-go').onclick = enviar;
+  q('cv-f').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) previewAnexo(f); };
+  t.addEventListener('paste', (e) => { const f = [...(e.clipboardData?.files || [])][0]; if (f) { e.preventDefault(); previewAnexo(f); } });
+  q('cv-mic').onclick = gravar;
+  q('cv-rx').onclick = () => pararGravacao(false);
   renderMsgs();
   t.focus();
 }
@@ -112,10 +120,92 @@ function renderMsgs(manterScroll) {
     const out = m.direcao === 'out';
     const who = !out ? '' : m.autor === 'ia' ? '<div class="who">IA</div>' : m.autor === 'celular' ? '<div class="who phone">Pelo celular</div>' : m.atendente ? '<div class="who">' + escapeHtml(m.atendente) + '</div>' : '';
     const st = out ? ({ enviado: ' ✓', entregue: ' ✓✓', lida: ' ✓✓', falhou: ' · falhou' }[m.status] || '') : '';
-    html += `<div class="bubble ${out ? 'out' : 'in'} ${m.status === 'falhou' ? 'fail' : ''}" ${m.erro ? 'title="' + escapeHtml(m.erro) + '"' : ''}>${who}<div class="txt">${escapeHtml(m.conteudo || '')}</div><div class="meta">${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${st}</div></div>`;
+    const md = midiaHtml(m), txt = textoSemRotulo(m);
+    html += `<div class="bubble ${out ? 'out' : 'in'} ${m.status === 'falhou' ? 'fail' : ''}" ${m.erro ? 'title="' + escapeHtml(m.erro) + '"' : ''}>${who}${md}${txt ? '<div class="txt">' + escapeHtml(txt) + '</div>' : ''}<div class="meta">${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${st}</div></div>`;
   }
   box.innerHTML = html;
   if (!manterScroll || noFim) box.scrollTop = box.scrollHeight;
+}
+
+const TIPOS_MIDIA = ['image', 'video', 'audio', 'document', 'sticker'];
+function midiaHtml(m) {
+  const u = m.media_url ? escapeHtml(m.media_url) : null, mime = m.media_mime || '';
+  if (!u) {
+    if (!TIPOS_MIDIA.includes(m.tipo)) return '';
+    const recente = m.criado_em && Date.now() - parseDate(m.criado_em) < 90000;
+    return '<div class="b-miss">' + (recente && !m.erro ? 'Carregando mídia…' : 'Mídia não disponível') + '</div>';
+  }
+  if (m.tipo === 'sticker') return '<img class="b-sticker" src="' + u + '" alt="Figurinha" loading="lazy">';
+  if (mime.startsWith('image/')) return '<img class="b-img" src="' + u + '" alt="Imagem" loading="lazy" onclick="zoom(this.src)">';
+  if (mime.startsWith('audio/')) return '<audio controls preload="none" src="' + u + '"></audio>';
+  if (mime.startsWith('video/')) return '<video controls preload="metadata" src="' + u + '"></video>';
+  return '<a class="b-doc" href="' + u + '" target="_blank" rel="noopener">' + icon('clip', 20) + '<span>' + escapeHtml(m.media_nome || 'Documento') + '<small>' + (m.media_tam ? fmtBytes(m.media_tam) : '') + '</small></span></a>';
+}
+function textoSemRotulo(m) {
+  let t = m.conteudo || '';
+  if (!TIPOS_MIDIA.includes(m.tipo)) return t;
+  t = t.replace(/^(📷|🎥|🎤|🎵|📄|💠|📎)\s*/u, '');
+  if (m.media_nome && t.startsWith(m.media_nome)) t = t.slice(m.media_nome.length);
+  t = t.trim();
+  return ['Imagem', 'Vídeo', 'Mensagem de voz', 'Áudio', 'Figurinha', 'Documento'].includes(t) ? '' : t;
+}
+window.zoom = (src) => { const d = document.createElement('div'); d.className = 'lightbox'; d.innerHTML = '<img src="' + src + '" alt="">'; d.onclick = () => d.remove(); document.body.appendChild(d); };
+
+function previewAnexo(file) {
+  if (file.size > 20 * 1024 * 1024) return toast('Arquivo acima de 20 MB', 'err');
+  const url = URL.createObjectURL(file), tipo = file.type || '';
+  const prev = tipo.startsWith('image/') ? '<img src="' + url + '" alt="">'
+    : tipo.startsWith('video/') ? '<video src="' + url + '" controls></video>'
+    : tipo.startsWith('audio/') ? '<audio src="' + url + '" controls></audio>'
+    : '<div style="text-align:center">' + icon('clip', 32) + '<div style="font-weight:600;margin-top:6px">' + escapeHtml(file.name) + '</div><div class="small soft">' + fmtBytes(file.size) + '</div></div>';
+  openModal('<div class="att-prev">' + prev + '</div>' + (tipo.startsWith('audio/') ? '' : '<div class="field" style="margin:0"><label for="at-c">Legenda</label><input class="input" id="at-c" placeholder="Opcional"></div>'),
+    { title: 'Enviar arquivo', wide: true, footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="at-go">Enviar arquivo</button>' });
+  q('at-go').onclick = async (ev) => {
+    btnLoading(ev.currentTarget, true, 'Enviando…');
+    try { await enviarArquivo(file, q('at-c')?.value || ''); closeModal(); URL.revokeObjectURL(url); }
+    catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
+  };
+}
+async function enviarArquivo(file, legenda) {
+  const up = await uploadArquivo(file, 'conversa');
+  await api('/api/contacts/' + ativo + '/send', { method: 'POST', body: { tipo: 'media', media_key: up.key, legenda, arquivo: up.nome } });
+  toast('Arquivo enviado', 'ok');
+  if (!contato.ia_pausada) { contato.ia_pausada = 1; renderConversa(); renderSide(); }
+  await recarregarConversa(); lista();
+}
+
+let gravador = null, pedacos = [], gravT = null;
+async function gravar() {
+  if (gravador) return pararGravacao(true);
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return toast('Seu navegador não grava áudio', 'err');
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { return toast('Permita o uso do microfone para gravar', 'err'); }
+  const tipo = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/mp4'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+  gravador = new MediaRecorder(stream, tipo ? { mimeType: tipo } : undefined);
+  pedacos = []; gravador.ondataavailable = (e) => e.data.size && pedacos.push(e.data);
+  gravador.start();
+  const ini = Date.now();
+  q('cv-mic').classList.add('rec'); q('cv-mic').innerHTML = icon('send', 20); q('cv-mic').title = 'Enviar áudio';
+  q('cv-rt').classList.remove('hidden'); q('cv-rx').classList.remove('hidden'); q('cv-t').classList.add('hidden'); q('cv-go').classList.add('hidden');
+  const tick = () => { const s = Math.floor((Date.now() - ini) / 1000); q('cv-rt').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); if (s >= 300) pararGravacao(true); };
+  tick(); gravT = setInterval(tick, 500);
+}
+function pararGravacao(enviarAudio) {
+  if (!gravador) return;
+  const g = gravador; gravador = null; clearInterval(gravT);
+  g.onstop = async () => {
+    g.stream.getTracks().forEach(t => t.stop());
+    ['cv-rt', 'cv-rx'].forEach(id => q(id)?.classList.add('hidden')); q('cv-t')?.classList.remove('hidden'); q('cv-go')?.classList.remove('hidden');
+    if (q('cv-mic')) { q('cv-mic').classList.remove('rec'); q('cv-mic').innerHTML = icon('mic', 21); q('cv-mic').title = 'Gravar áudio'; }
+    if (!enviarAudio || !pedacos.length) return;
+    const tipo = (g.mimeType || 'audio/webm').split(';')[0];
+    const ext = { 'audio/ogg': 'ogg', 'audio/webm': 'weba', 'audio/mp4': 'm4a' }[tipo] || 'weba';
+    const file = new File(pedacos, 'audio.' + ext, { type: tipo });
+    toast('Enviando áudio…');
+    try { await enviarArquivo(file, ''); } catch (e) { toast(e.message, 'err'); }
+  };
+  g.stop();
 }
 
 async function enviar() {
@@ -131,21 +221,6 @@ async function enviar() {
     lista();
   } catch (e) { temp.status = 'falhou'; temp.erro = e.message; renderMsgs(); toast(e.message, 'err'); }
 }
-
-window.modalMidia = () => {
-  openModal(`
-    <div class="field"><label for="md-t">Tipo</label><select class="select" id="md-t"><option value="image">Imagem</option><option value="video">Vídeo</option><option value="document">Documento (PDF etc.)</option></select></div>
-    <div class="field"><label for="md-u">Link público do arquivo</label><input class="input" id="md-u" placeholder="https://…"><div class="hint">O envio de arquivos do computador chega numa próxima atualização.</div></div>
-    <div class="field"><label for="md-c">Legenda</label><input class="input" id="md-c"></div>`,
-    { title: 'Enviar arquivo', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="md-go">Enviar arquivo</button>' });
-  q('md-go').onclick = async (ev) => {
-    btnLoading(ev.currentTarget, true, 'Enviando…');
-    try {
-      await api('/api/contacts/' + ativo + '/send', { method: 'POST', body: { tipo: 'media', mediatype: q('md-t').value, url: q('md-u').value.trim(), legenda: q('md-c').value } });
-      closeModal(); toast('Arquivo enviado', 'ok'); recarregarConversa();
-    } catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
-  };
-};
 
 function renderSide() {
   const c = contato, sd = q('sd');
@@ -189,7 +264,8 @@ async function recarregarConversa() {
   if (!ativo) return;
   try {
     const r = await api('/api/contacts/' + ativo + '/conversation');
-    const mudou = r.mensagens.length !== mensagens.filter(m => m.id).length || JSON.stringify(r.mensagens.map(m => m.status)) !== JSON.stringify(mensagens.filter(m => m.id).map(m => m.status));
+    const assin = (arr) => JSON.stringify(arr.filter(m => m.id).map(m => [m.id, m.status, !!m.media_url]));
+    const mudou = assin(r.mensagens) !== assin(mensagens);
     if (mudou) { mensagens = r.mensagens; renderMsgs(true); }
     if (r.contato.nao_lidas > 0) api('/api/contacts/' + ativo + '/read', { method: 'POST' });
     if (!!r.contato.ia_pausada !== !!contato.ia_pausada) { contato = r.contato; renderConversa(); renderSide(); }

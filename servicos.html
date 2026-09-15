@@ -1,0 +1,143 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Serviços e equipe — IA ZAP</title>
+<style>
+.cor-dot{display:inline-block;width:10px;height:10px;border-radius:99px;margin-right:8px;vertical-align:middle}
+.swatches{display:flex;gap:8px;flex-wrap:wrap}
+.swatch{width:28px;height:28px;border-radius:99px;border:2px solid transparent;cursor:pointer;padding:0}
+.swatch.on{border-color:var(--ink);box-shadow:inset 0 0 0 2px #fff}
+.wk{display:grid;grid-template-columns:72px 40px repeat(2,minmax(0,1fr)) 10px repeat(2,minmax(0,1fr));gap:6px;align-items:center;margin-bottom:6px}
+.wk .input{padding:6px 7px}
+.wk.off .input{opacity:.35;pointer-events:none}
+.wk-head{font-size:11px;color:var(--ink-soft)}
+.off-row td{opacity:.5}
+@media (max-width:640px){.wk{grid-template-columns:60px 40px repeat(2,minmax(0,1fr));}.wk .int{display:none}}
+</style></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+const DIAS_W = [['seg','Segunda'],['ter','Terça'],['qua','Quarta'],['qui','Quinta'],['sex','Sexta'],['sab','Sábado'],['dom','Domingo']];
+const CORES = ['#14A152','#2D6CDF','#C2410C','#7C3AED','#DB2777','#0891B2','#CA8A04','#475569'];
+const DURS = [15,20,30,40,45,60,75,90,120,150,180];
+let servicos = [], profs = [];
+
+(async () => {
+  const me = await loadMe();
+  renderShell('servicos', { title: 'Serviços e equipe' });
+  if (me.account.modelo !== 'agenda') { q('content').innerHTML = '<div class="notice">Esta tela é do modelo Agenda de serviços.</div>'; return; }
+  q('content').innerHTML = `<div class="page" style="max-width:980px">
+    <div class="panel"><div class="panel-head"><div><h3>Profissionais</h3><p>Quem atende, em que dias e horários, e quais serviços faz.</p></div><button class="btn btn-primary" onclick="modalProf()">Adicionar profissional</button></div>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Nome</th><th>Serviços</th><th>Dias de trabalho</th><th></th></tr></thead><tbody id="tp"></tbody></table></div></div>
+    <div class="panel"><div class="panel-head"><div><h3>Serviços</h3><p>A IA só oferece o que estiver ativo aqui, com o preço e a duração informados.</p></div><button class="btn btn-primary" onclick="modalServ()">Adicionar serviço</button></div>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Serviço</th><th>Preço</th><th>Duração</th><th>Quem faz</th><th></th></tr></thead><tbody id="ts"></tbody></table></div></div>
+  </div>`;
+  carregar();
+})();
+
+async function carregar() {
+  try {
+    const [s, p] = await Promise.all([api('/api/services'), api('/api/professionals')]);
+    servicos = s.servicos; profs = p.profissionais; render();
+  } catch (e) { toast(e.message, 'err'); }
+}
+const nomeProf = id => profs.find(p => p.id === id)?.nome;
+const nomeServ = id => servicos.find(s => s.id === id)?.nome;
+
+function render() {
+  q('tp').innerHTML = profs.length ? profs.map(p => {
+    const dias = DIAS_W.filter(([k]) => p.horarios[k]?.ativo).map(([k, n]) => n.slice(0, 3)).join(', ');
+    return `<tr class="click ${p.ativo ? '' : 'off-row'}" onclick="modalProf('${p.id}')">
+      <td style="font-weight:600;color:var(--ink)"><div style="display:flex;align-items:center;gap:10px">${p.foto_url ? '<img class="av-sm" style="width:32px;height:32px" src="' + escapeHtml(p.foto_url) + '" alt="">' : '<span class="cor-dot" style="background:' + escapeHtml(p.cor || '#14A152') + '"></span>'}<span>${escapeHtml(p.nome)}${p.ativo ? '' : ' <span class="pill">Inativo</span>'}</span></div></td>
+      <td>${p.servicos.length ? p.servicos.map(id => '<span class="tag">' + escapeHtml(nomeServ(id) || '') + '</span>').join('') : '<span class="pill pill-warn">Nenhum serviço</span>'}</td>
+      <td>${dias || '<span class="pill pill-warn">Sem horário</span>'}</td>
+      <td style="text-align:right"><button class="btn btn-sm">Editar</button></td></tr>`;
+  }).join('') : '<tr><td colspan="4"><div class="empty"><b>Nenhum profissional</b>Cadastre quem atende para a agenda funcionar.</div></td></tr>';
+
+  q('ts').innerHTML = servicos.length ? servicos.map(s => `<tr class="click ${s.ativo ? '' : 'off-row'}" onclick="modalServ('${s.id}')">
+      <td><div style="font-weight:600;color:var(--ink)">${escapeHtml(s.nome)}${s.ativo ? '' : ' <span class="pill">Inativo</span>'}</div>${s.descricao ? '<div class="small soft">' + escapeHtml(s.descricao) + '</div>' : ''}</td>
+      <td>${fmtMoney(s.preco_centavos)}</td><td>${s.duracao_min} min</td>
+      <td>${s.profissionais.length ? s.profissionais.map(id => escapeHtml(nomeProf(id) || '')).join(', ') : '<span class="pill pill-warn">Ninguém</span>'}</td>
+      <td style="text-align:right"><button class="btn btn-sm">Editar</button></td></tr>`).join('')
+    : '<tr><td colspan="5"><div class="empty"><b>Nenhum serviço</b>Cadastre os serviços com preço e duração.</div></td></tr>';
+}
+
+window.modalServ = (id) => {
+  const s = servicos.find(x => x.id === id) || { nome: '', descricao: '', preco_centavos: 0, duracao_min: 30, ativo: 1, profissionais: profs.filter(p => p.ativo).map(p => p.id) };
+  openModal(`
+    <div class="field"><label for="sv-n">Nome do serviço</label><input class="input" id="sv-n" value="${escapeHtml(s.nome)}" placeholder="Ex.: Corte masculino"></div>
+    <div class="row">
+      <div class="field"><label for="sv-p">Preço (R$)</label><input class="input" id="sv-p" inputmode="decimal" value="${s.preco_centavos ? (s.preco_centavos / 100).toFixed(2).replace('.', ',') : ''}" placeholder="40,00"></div>
+      <div class="field"><label for="sv-d">Duração</label><select class="select" id="sv-d">${[...new Set([...DURS, s.duracao_min])].sort((a,b)=>a-b).map(d => '<option value="' + d + '" ' + (d === s.duracao_min ? 'selected' : '') + '>' + (d < 60 ? d + ' min' : Math.floor(d/60) + 'h' + (d%60 ? String(d%60).padStart(2,'0') : '')) + '</option>').join('')}</select></div>
+    </div>
+    <div class="field"><label for="sv-ds">Descrição</label><input class="input" id="sv-ds" value="${escapeHtml(s.descricao || '')}" placeholder="Opcional. A IA usa para explicar o serviço."></div>
+    <div class="field"><label>Quem faz este serviço</label><div class="checks" id="sv-pr">${profs.length ? profs.map(p => '<label class="check"><input type="checkbox" value="' + p.id + '" ' + (s.profissionais.includes(p.id) ? 'checked' : '') + '>' + escapeHtml(p.nome) + '</label>').join('') : '<span class="small soft">Cadastre profissionais primeiro.</span>'}</div></div>
+    ${id ? '<label class="check"><input type="checkbox" id="sv-a" ' + (s.ativo ? 'checked' : '') + '>Serviço ativo</label>' : ''}`,
+    { title: id ? 'Editar serviço' : 'Novo serviço', footer: (id ? '<button class="btn btn-danger" style="margin-right:auto" id="sv-del">Remover</button>' : '') + '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="sv-go">Salvar serviço</button>' });
+  q('sv-go').onclick = async (ev) => {
+    btnLoading(ev.currentTarget, true, 'Salvando…');
+    const body = { nome: q('sv-n').value, preco_centavos: parseMoney(q('sv-p').value), duracao_min: +q('sv-d').value, descricao: q('sv-ds').value, profissionais: [...document.querySelectorAll('#sv-pr input:checked')].map(i => i.value), ativo: id ? q('sv-a').checked : true };
+    try { await api('/api/services' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body }); closeModal(); toast('Serviço salvo', 'ok'); carregar(); }
+    catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
+  };
+  if (q('sv-del')) q('sv-del').onclick = async () => {
+    if (!confirm('Remover este serviço? Se já tiver marcações, ele fica apenas inativo.')) return;
+    try { const r = await api('/api/services/' + id, { method: 'DELETE' }); closeModal(); toast(r.desativado ? 'Serviço desativado' : 'Serviço removido', 'ok'); carregar(); } catch (e) { toast(e.message, 'err'); }
+  };
+};
+
+window.modalProf = (id) => {
+  const padrao = {}; DIAS_W.forEach(([k]) => padrao[k] = { ativo: !['dom'].includes(k), ini: '09:00', fim: k === 'sab' ? '13:00' : '19:00', int_ini: k === 'sab' ? '' : '12:00', int_fim: k === 'sab' ? '' : '13:00' });
+  const p = profs.find(x => x.id === id) || { nome: '', telefone: '', cor: CORES[profs.length % CORES.length], horarios: padrao, servicos: servicos.filter(s => s.ativo).map(s => s.id), ativo: 1 };
+  let cor = p.cor || CORES[0], fotoKey, fotoUrl = p.foto_url || null;
+  const linha = ([k, n]) => { const h = p.horarios[k] || { ativo: false, ini: '09:00', fim: '18:00', int_ini: '', int_fim: '' };
+    return `<div class="wk ${h.ativo ? '' : 'off'}" data-d="${k}"><span>${n}</span>
+      <label class="switch"><input type="checkbox" ${h.ativo ? 'checked' : ''} onchange="this.closest('.wk').classList.toggle('off',!this.checked)"><span></span></label>
+      <input type="time" class="input" value="${h.ini}" aria-label="${n} início"><input type="time" class="input" value="${h.fim}" aria-label="${n} fim">
+      <span class="soft small int" style="text-align:center">|</span>
+      <input type="time" class="input int" value="${h.int_ini || ''}" aria-label="${n} início do intervalo"><input type="time" class="input int" value="${h.int_fim || ''}" aria-label="${n} fim do intervalo"></div>`; };
+  openModal(`
+    <div class="field foto-edit">
+      <div class="foto-av" id="pf-fa">${fotoUrl ? '<img src="' + escapeHtml(fotoUrl) + '" alt="">' : initial(p.nome || '?')}</div>
+      <div><button type="button" class="btn btn-sm" id="pf-fb">${icon('camera', 16)} ${fotoUrl ? 'Trocar foto' : 'Adicionar foto'}</button>
+        ${fotoUrl ? '<button type="button" class="btn btn-sm btn-ghost" id="pf-fr">Remover foto</button>' : ''}
+        <div class="hint">A foto aparece na agenda e na lista da equipe.</div></div>
+      <input type="file" id="pf-ff" class="hidden" accept="image/*">
+    </div>
+    <div class="row">
+      <div class="field"><label for="pf-n">Nome</label><input class="input" id="pf-n" value="${escapeHtml(p.nome)}" placeholder="Ex.: João"></div>
+      <div class="field"><label for="pf-t">WhatsApp (opcional)</label><input class="input" id="pf-t" value="${escapeHtml(p.telefone ? fmtPhone(p.telefone) : '')}" inputmode="tel"></div>
+    </div>
+    <div class="field"><label>Cor na agenda</label><div class="swatches" id="pf-c">${CORES.map(c => '<button type="button" class="swatch ' + (c === cor ? 'on' : '') + '" style="background:' + c + '" data-c="' + c + '" aria-label="Cor ' + c + '"></button>').join('')}</div></div>
+    <div class="field"><label>Serviços que faz</label><div class="checks" id="pf-s">${servicos.length ? servicos.map(s => '<label class="check"><input type="checkbox" value="' + s.id + '" ' + (p.servicos.includes(s.id) ? 'checked' : '') + '>' + escapeHtml(s.nome) + '</label>').join('') : '<span class="small soft">Nenhum serviço cadastrado ainda.</span>'}</div></div>
+    <div class="field"><label>Horário de trabalho</label>
+      <div class="wk wk-head"><span></span><span></span><span>Início</span><span>Fim</span><span class="int"></span><span class="int">Intervalo</span><span class="int">até</span></div>
+      <div id="pf-h">${DIAS_W.map(linha).join('')}</div>
+      <button type="button" class="btn btn-sm btn-ghost" id="pf-copy" style="margin-top:4px">Copiar segunda para terça a sexta</button>
+    </div>
+    ${id ? '<label class="check"><input type="checkbox" id="pf-a" ' + (p.ativo ? 'checked' : '') + '>Profissional ativo</label>' : ''}`,
+    { title: id ? 'Editar profissional' : 'Novo profissional', wide: true, footer: (id ? '<button class="btn btn-danger" style="margin-right:auto" id="pf-del">Remover</button>' : '') + '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="pf-go">Salvar profissional</button>' });
+  q('pf-fb').onclick = () => q('pf-ff').click();
+  if (q('pf-fr')) q('pf-fr').onclick = () => { fotoKey = null; q('pf-fa').innerHTML = initial(q('pf-n').value); q('pf-fr').remove(); };
+  q('pf-ff').onchange = async (e) => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    q('pf-fa').innerHTML = '<div class="spinner"></div>';
+    try { const up = await uploadArquivo(f, 'profissional', { maxLado: 600 }); fotoKey = up.key; q('pf-fa').innerHTML = '<img src="' + escapeHtml(up.url) + '" alt="">'; }
+    catch (err) { toast(err.message, 'err'); q('pf-fa').innerHTML = fotoUrl ? '<img src="' + escapeHtml(fotoUrl) + '" alt="">' : initial(q('pf-n').value); }
+  };
+  q('pf-c').onclick = (e) => { const b = e.target.closest('.swatch'); if (!b) return; cor = b.dataset.c; q('pf-c').querySelectorAll('.swatch').forEach(x => x.classList.toggle('on', x === b)); };
+  q('pf-copy').onclick = () => {
+    const rows = [...q('pf-h').querySelectorAll('.wk')]; const src = rows[0].querySelectorAll('input');
+    rows.slice(1, 5).forEach(r => { const t = r.querySelectorAll('input'); t.forEach((inp, i) => { if (inp.type === 'checkbox') inp.checked = src[i].checked; else inp.value = src[i].value; }); r.classList.toggle('off', !src[0].checked); });
+  };
+  q('pf-go').onclick = async (ev) => {
+    const horarios = {};
+    q('pf-h').querySelectorAll('.wk').forEach(r => { const i = r.querySelectorAll('input'); horarios[r.dataset.d] = { ativo: i[0].checked, ini: i[1].value, fim: i[2].value, int_ini: i[3].value, int_fim: i[4].value }; });
+    const body = { nome: q('pf-n').value, telefone: q('pf-t').value, cor, horarios, ...(fotoKey !== undefined ? { foto_key: fotoKey } : {}), servicos: [...document.querySelectorAll('#pf-s input:checked')].map(i => i.value), ativo: id ? q('pf-a').checked : true };
+    btnLoading(ev.currentTarget, true, 'Salvando…');
+    try { await api('/api/professionals' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body }); closeModal(); toast('Profissional salvo', 'ok'); carregar(); }
+    catch (e) { toast(e.message.replace(/ em (seg|ter|qua|qui|sex|sab|dom)$/, (m, d) => ' em ' + DIAS_W.find(x => x[0] === d)[1].toLowerCase()), 'err'); btnLoading(ev.currentTarget, false); }
+  };
+  if (q('pf-del')) q('pf-del').onclick = async () => {
+    if (!confirm('Remover este profissional? Se já tiver histórico, ele fica apenas inativo.')) return;
+    try { const r = await api('/api/professionals/' + id, { method: 'DELETE' }); closeModal(); toast(r.desativado ? 'Profissional desativado' : 'Profissional removido', 'ok'); carregar(); } catch (e) { toast(e.message, 'err'); }
+  };
+};
+</script>
+</body></html>
