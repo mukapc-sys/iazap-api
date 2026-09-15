@@ -318,7 +318,10 @@ async function uploadArquivo(file, destino, { maxLado } = {}) {
 
 function initial(s) { return escapeHtml((String(s || '?').trim().charAt(0) || '?').toUpperCase()); }
 function btnLoading(btn, on, txt) {
+  // depois de um await, event.currentTarget vira null: usa o último botão marcado
+  if (!btn && !on) btn = btnLoading._ult;
   if (!btn) return;
+  if (on) btnLoading._ult = btn;
   if (on) { btn.dataset.t = btn.innerHTML; btn.disabled = true; btn.innerHTML = txt || 'Aguarde…'; }
   else { btn.disabled = false; if (btn.dataset.t) btn.innerHTML = btn.dataset.t; }
 }

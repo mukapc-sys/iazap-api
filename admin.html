@@ -41,7 +41,7 @@ function render() {
     <td>${c.contatos}</td>
     <td>${c.status === 'ativo' ? '<span class="pill pill-ok">Ativa</span>' : '<span class="pill pill-err">Bloqueada</span>'}</td>
     <td class="small">${fmtDate(c.criado_em)}</td>
-    <td style="white-space:nowrap"><button class="btn btn-sm" onclick="resetSenha('${c.id}')">Nova senha</button>
+    <td style="white-space:nowrap"><button class="btn btn-sm" onclick="demos('${c.id}')">Criar demos</button> <button class="btn btn-sm" onclick="resetSenha('${c.id}')">Nova senha</button>
       <button class="btn btn-sm ${c.status === 'ativo' ? 'btn-danger' : ''}" onclick="setStatus('${c.id}','${c.status === 'ativo' ? 'bloqueado' : 'ativo'}')">${c.status === 'ativo' ? 'Bloquear' : 'Desbloquear'}</button></td>
   </tr>`).join('') : '<tr><td colspan="9"><div class="empty"><b>Nenhuma conta</b>Clique em Criar conta.</div></td></tr>';
 }
@@ -72,13 +72,31 @@ window.setStatus = async (id, status) => {
   if (status === 'bloqueado' && !confirm('Bloquear esta conta? O cliente perde o acesso na hora.')) return;
   try { await adm('/accounts/' + id, { method: 'PATCH', body: { status } }); toast('Status atualizado', 'ok'); painel(); } catch (e) { toast(e.message, 'err'); }
 };
+const linkSala = (t) => new URL('sala.html?t=' + t, location.href).href;
+window.demos = async (id) => {
+  try {
+    const r = await adm('/accounts/' + id + '/demos');
+    openModal('<p class="muted" style="margin-top:0">Cria um número completo para cada segmento (dados da empresa, serviços, equipe, horários e regras), com a sala de teste já ligada. A conta precisa ter a chave do Gemini válida.</p><div class="checks" id="dm">' + r.demos.map(d => '<label class="check"><input type="checkbox" value="' + d.chave + '" checked>' + escapeHtml(d.rotulo) + ' <span class="soft small">(' + escapeHtml(d.empresa) + ')</span></label>').join('') + '</div><div id="dm-res"></div>',
+      { title: 'Criar números de demonstração', wide: true, footer: '<button class="btn" onclick="closeModal()">Fechar</button><button class="btn btn-primary" id="dm-go">Criar demonstrações</button>' });
+    q('dm-go').onclick = async (ev) => {
+      const escolhidas = [...document.querySelectorAll('#dm input:checked')].map(i => i.value);
+      if (!escolhidas.length) return toast('Escolha pelo menos uma', 'err');
+      btnLoading(ev.currentTarget, true, 'Criando…');
+      try {
+        const x = await adm('/accounts/' + id + '/demos', { method: 'POST', body: { demos: escolhidas } });
+        q('dm-res').innerHTML = '<div class="notice notice-ok" style="margin-top:14px">Criado. Links das salas de teste:</div>' + x.criados.map(c => '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><b style="min-width:150px">' + escapeHtml(c.nome) + '</b><input class="input" readonly value="' + escapeHtml(linkSala(c.sala_token)) + '"><a class="btn btn-sm" target="_blank" rel="noopener" href="' + escapeHtml(linkSala(c.sala_token)) + '">Abrir</a></div>').join('');
+        q('dm-go')?.remove(); painel();
+      } catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
+    };
+  } catch (e) { toast(e.message, 'err'); }
+};
 window.setLimite = async (id, v) => {
   try { await adm('/accounts/' + id, { method: 'PATCH', body: { max_numeros: +v } }); toast('Limite atualizado', 'ok'); } catch (e) { toast(e.message, 'err'); painel(); }
 };
 window.verNumeros = async (id) => {
   try {
     const r = await adm('/accounts/' + id + '/numeros');
-    openModal('<table class="tbl"><thead><tr><th>Número</th><th>Segmento</th><th>WhatsApp</th><th>Contatos</th></tr></thead><tbody>' + r.numeros.map(n => '<tr><td>' + escapeHtml(n.nome) + '</td><td><select class="select" style="padding:4px 6px" onchange="setSegmento(\'' + id + '\',\'' + n.id + '\',this.value)"><option value="">Não definido</option>' + Object.entries(MODELOS).map(([k, v]) => '<option value="' + k + '" ' + (n.segmento === k ? 'selected' : '') + '>' + v.nome + '</option>').join('') + '</select></td><td>' + (n.status === 'open' ? fmtPhone(n.numero) : n.status) + '</td><td>' + n.contatos + '</td></tr>').join('') + '</tbody></table>',
+    openModal('<table class="tbl"><thead><tr><th>Número</th><th>Segmento</th><th>WhatsApp</th><th>Contatos</th><th></th></tr></thead><tbody>' + r.numeros.map(n => '<tr><td>' + escapeHtml(n.nome) + '</td><td><select class="select" style="padding:4px 6px" onchange="setSegmento(\'' + id + '\',\'' + n.id + '\',this.value)"><option value="">Não definido</option>' + Object.entries(MODELOS).map(([k, v]) => '<option value="' + k + '" ' + (n.segmento === k ? 'selected' : '') + '>' + v.nome + '</option>').join('') + '</select></td><td>' + (n.status === 'open' ? fmtPhone(n.numero) : n.status) + '</td><td>' + n.contatos + '</td><td>' + (n.sala_ativa && n.sala_token ? '<a class="btn btn-sm" target="_blank" rel="noopener" href="' + escapeHtml(linkSala(n.sala_token)) + '">Sala de teste</a>' : '') + '</td></tr>').join('') + '</tbody></table>',
       { title: 'Números da conta', wide: true, footer: '<button class="btn btn-primary" onclick="closeModal();painel()">Fechar</button>' });
   } catch (e) { toast(e.message, 'err'); }
 };

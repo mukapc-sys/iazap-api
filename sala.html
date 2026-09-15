@@ -1,0 +1,143 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><meta name="robots" content="noindex"><title>Sala de teste da IA — IA ZAP</title>
+<style>
+html,body{height:100%}
+body{background:#DCE3DF;overflow:hidden}
+.sala{height:100vh;height:100dvh;display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,480px) minmax(0,1fr)}
+.sala-lado{padding:28px;display:flex;flex-direction:column;gap:14px;color:var(--ink-mute);font-size:14px}
+.sala-lado h2{font-size:18px}
+.sala-lado ul{margin:0;padding-left:18px}
+.sala-lado li{margin-bottom:6px}
+.fone{grid-column:2;display:flex;flex-direction:column;background:var(--chat);min-height:0;box-shadow:0 0 0 1px rgba(14,42,33,.08),0 20px 60px rgba(14,42,33,.18)}
+.fone-top{background:#0B6B37;color:#fff;padding:10px 14px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.fone-top .avatar{background:rgba(255,255,255,.2);color:#fff}
+.fone-top b{display:block;font-size:15px}
+.fone-top small{font-size:12px;opacity:.85}
+.fone-top button{margin-left:auto;background:rgba(255,255,255,.14);color:#fff;border:none;border-radius:99px;padding:6px 12px;font-size:12px;font-weight:600}
+.fone-top button:hover{background:rgba(255,255,255,.24)}
+.aviso{background:#FFF7DB;color:#6B4309;font-size:12px;padding:7px 14px;text-align:center;flex-shrink:0}
+.msgs{flex:1 1 auto;min-height:0;overflow-y:auto;padding:14px 5%;display:flex;flex-direction:column;gap:4px;overscroll-behavior:contain}
+.msgs .bubble{max-width:82%}
+.dig{align-self:flex-start;background:#fff;border-radius:9px;border-top-left-radius:2px;padding:10px 14px;box-shadow:0 1px .5px rgba(11,20,26,.13);display:flex;gap:4px}
+.dig i{width:7px;height:7px;border-radius:99px;background:#9AA8A2;animation:pul 1.2s infinite}
+.dig i:nth-child(2){animation-delay:.2s}.dig i:nth-child(3){animation-delay:.4s}
+@keyframes pul{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+.inicio{align-self:center;text-align:center;background:#fff;border-radius:10px;padding:14px 16px;margin:20px 0;font-size:13px;color:var(--ink-mute);max-width:320px;box-shadow:0 1px .5px rgba(11,20,26,.13)}
+.inicio b{color:var(--ink)}
+.sugs{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:10px}
+.sugs button{border:1px solid var(--line);background:var(--bg);border-radius:99px;padding:5px 10px;font-size:12px;color:var(--ink-2)}
+.sugs button:hover{border-color:var(--brand)}
+.fone .conv-input{flex-shrink:0}
+.erro-sala{margin:auto;text-align:center;padding:30px;max-width:340px}
+@media (max-width:900px){.sala{grid-template-columns:1fr}.sala-lado{display:none}.fone{grid-column:1;box-shadow:none}}
+</style></head><body>
+<div class="sala" id="sala">
+  <aside class="sala-lado"><div id="logo"></div><h2>Sala de teste da IA</h2>
+    <p style="margin:0">Converse como se fosse um cliente no WhatsApp. A IA responde com os dados cadastrados deste número.</p>
+    <ul><li>Nada é enviado para o WhatsApp de verdade.</li><li>Marcações feitas aqui entram na agenda como <b>teste</b>.</li><li>Lembretes programados aqui chegam nesta conversa.</li><li>Use <b>Reiniciar</b> para começar do zero, como um cliente novo.</li></ul>
+  </aside>
+  <main class="fone" id="fone"><div class="erro-sala"><div class="spinner"></div></div></main>
+</div>
+<div id="toast"></div>
+<script>
+q('logo').innerHTML = logoHTML();
+const TOKEN = new URLSearchParams(location.search).get('t') || '';
+const CHAVE_VIS = 'iz_sala_' + TOKEN;
+let vis = localStorage.getItem(CHAVE_VIS);
+if (!vis) { vis = crypto.randomUUID(); localStorage.setItem(CHAVE_VIS, vis); }
+let ultimo = 0, msgs = [], info = null, aguardando = false, pollT = null;
+
+(async () => {
+  if (!TOKEN) return erro('Link incompleto. Peça o link da sala de teste de novo.');
+  try { info = await api('/sala/' + TOKEN, { noAuth: true }); }
+  catch (e) { return erro(e.message); }
+  document.title = 'Teste da IA · ' + info.empresa;
+  q('fone').innerHTML = `
+    <div class="fone-top"><div class="avatar">${initial(info.empresa)}</div>
+      <div style="min-width:0"><b>${escapeHtml(info.empresa)}</b><small id="st">${info.pronto ? 'online' : 'IA indisponível'}</small></div>
+      <button id="rst" title="Apagar esta conversa e começar como cliente novo">Reiniciar</button></div>
+    <div class="aviso">Conversa de teste. Nada sai pelo WhatsApp.</div>
+    ${info.pronto ? '' : '<div class="notice notice-err" style="margin:10px;border-radius:8px">A IA ainda não está pronta: ' + escapeHtml(info.pendencia) + '.</div>'}
+    <div class="msgs" id="ms"></div>
+    <div class="conv-input">
+      <textarea id="tx" rows="1" placeholder="Digite uma mensagem" aria-label="Mensagem"></textarea>
+      <button class="icon-btn send" id="go" aria-label="Enviar">${icon('send', 20)}</button>
+    </div>`;
+  const t = q('tx');
+  t.addEventListener('input', () => { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; });
+  t.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } });
+  q('go').onclick = () => enviar();
+  q('rst').onclick = reiniciar;
+  await buscar();
+  render();
+  t.focus();
+  agendarPoll(5000);
+})();
+
+function erro(msg) { q('fone').innerHTML = '<div class="erro-sala"><b style="display:block;color:var(--ink);margin-bottom:6px">Sala indisponível</b>' + escapeHtml(msg) + '</div>'; }
+
+let esperaDesde = 0;
+async function buscar() {
+  const r = await api('/sala/' + TOKEN + '/mensagens?visitante=' + vis + '&desde=' + ultimo, { noAuth: true });
+  if (r.mensagens.length) { msgs = msgs.filter(m => !m.local); msgs.push(...r.mensagens); ultimo = r.mensagens[r.mensagens.length - 1].rid; }
+  const ult = msgs[msgs.length - 1];
+  aguardando = r.digitando || (!!ult && ult.direcao === 'in' && Date.now() - esperaDesde < 45000);
+  return r;
+}
+
+function render() {
+  const box = q('ms'); if (!box) return;
+  const noFim = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  if (!msgs.length) {
+    const exemplos = info.segmento === 'agenda' ? ['Oi, quanto custa?', 'Tem horário amanhã de manhã?', 'Quero marcar para sexta', 'Onde fica?'] : ['Oi!', 'Como funciona?'];
+    box.innerHTML = '<div class="inicio"><b>Comece a conversa</b><br>Escreva como um cliente escreveria.<div class="sugs">' + exemplos.map(x => '<button onclick="enviar(this.textContent)">' + escapeHtml(x) + '</button>').join('') + '</div></div>';
+    return;
+  }
+  let html = '';
+  for (const m of msgs) {
+    const out = m.direcao === 'out';
+    const who = !out ? '' : m.autor === 'lembrete' ? '<div class="who">Lembrete automático</div>' : m.autor === 'agendada' ? '<div class="who">Mensagem programada</div>' : '';
+    const hora = parseDate(m.criado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    // na visão do cliente: o que ele manda fica à direita, o que a empresa manda à esquerda
+    html += '<div class="bubble ' + (out ? 'in' : 'out') + '">' + who + '<div class="txt">' + formatar(m.conteudo) + '</div><div class="meta">' + hora + (out ? '' : ' ✓✓') + '</div></div>';
+  }
+  if (aguardando) html += '<div class="dig" aria-label="digitando"><i></i><i></i><i></i></div>';
+  box.innerHTML = html;
+  if (noFim || aguardando) box.scrollTop = box.scrollHeight;
+  if (q('st')) q('st').textContent = aguardando ? 'digitando…' : (info.pronto ? 'online' : 'IA indisponível');
+}
+
+// negrito e itálico do WhatsApp
+function formatar(t) {
+  return escapeHtml(t || '').replace(/\*([^*\n]+)\*/g, '<b>$1</b>').replace(/(^|\s)_([^_\n]+)_/g, '$1<i>$2</i>').replace(/~([^~\n]+)~/g, '<s>$1</s>');
+}
+
+async function enviar(textoPronto) {
+  const t = q('tx'); const texto = (textoPronto || t.value).trim();
+  if (!texto || !info.pronto) return;
+  if (!textoPronto) { t.value = ''; t.style.height = 'auto'; }
+  msgs.push({ rid: 0, direcao: 'in', autor: 'lead', conteudo: texto, criado_em: new Date().toISOString(), local: true });
+  esperaDesde = Date.now(); aguardando = true; render();
+  try {
+    await api('/sala/' + TOKEN + '/mensagem', { method: 'POST', noAuth: true, body: { visitante: vis, texto } });
+    agendarPoll(1000);
+  } catch (e) { aguardando = false; esperaDesde = 0; msgs = msgs.filter(m => !m.local); render(); toast(e.message, 'err'); if (!textoPronto) t.value = texto; }
+}
+
+function agendarPoll(ms) {
+  clearTimeout(pollT);
+  pollT = setTimeout(async () => {
+    if (!document.hidden || aguardando) { try { await buscar(); render(); } catch { } }
+    agendarPoll(aguardando ? 1200 : 4000);
+  }, ms);
+}
+
+async function reiniciar() {
+  if (!confirm('Apagar esta conversa de teste e começar como um cliente novo? Marcações e lembretes feitos aqui também são apagados.')) return;
+  try {
+    await api('/sala/' + TOKEN + '/reiniciar', { method: 'POST', noAuth: true, body: { visitante: vis } });
+    vis = crypto.randomUUID(); localStorage.setItem(CHAVE_VIS, vis);
+    msgs = []; ultimo = 0; aguardando = false; render(); toast('Conversa reiniciada', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+}
+</script>
+</body></html>

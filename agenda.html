@@ -118,7 +118,7 @@ function render() {
     const evs = g.agendamentos.filter(a => a.professional_id === p.id && (verCancelados || a.status !== 'cancelado')).map(a => {
       const hgt = Math.max(22, (a.fim_min - a.inicio_min) * PX - 2);
       return '<div class="ag-ev st-' + a.status + '" style="--c:' + escapeHtml(p.cor || '#14A152') + ';top:' + (y(a.inicio_min) + 1) + 'px;height:' + hgt + 'px" onclick="event.stopPropagation();verAg(\'' + a.id + '\')" title="' + escapeHtml(a.cliente_nome + ' · ' + (a.servico_nome || '')) + '">'
-        + (a.origem === 'ia' ? '<span class="ia">IA</span>' : '') + (a.lembrete_status === 'pendente' ? '<span style="float:right;color:var(--ink-mute)" title="Lembrete programado">' + icon('bell', 12) + '</span>' : '') + '<b>' + min2hm(a.inicio_min) + ' ' + escapeHtml(a.cliente_nome) + '</b>'
+        + (a.teste ? '<span class="ia" style="background:var(--warn-lt);color:var(--warn)">TESTE</span>' : '') + (a.origem === 'ia' ? '<span class="ia">IA</span>' : '') + (a.lembrete_status === 'pendente' ? '<span style="float:right;color:var(--ink-mute)" title="Lembrete programado">' + icon('bell', 12) + '</span>' : '') + '<b>' + min2hm(a.inicio_min) + ' ' + escapeHtml(a.cliente_nome) + '</b>'
         + (hgt > 34 ? '<div class="s">' + escapeHtml(a.servico_nome || '') + (a.status !== 'agendado' ? ' · ' + ST[a.status] : '') + '</div>' : '') + '</div>';
     }).join('');
     return '<div class="ag-col" style="height:' + H + 'px" data-p="' + p.id + '">' + grid + offHtml + blocks + evs + nowLine + '</div>';

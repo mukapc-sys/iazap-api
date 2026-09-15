@@ -19,6 +19,9 @@ let me;
       <label class="switch"><input type="checkbox" id="ia-on"><span></span></label></div>
       <div class="panel-body"><ul class="req" id="req" style="list-style:none;margin:0;padding:0"></ul></div>
     </div>
+    <div class="panel"><div class="panel-head"><div><h3>Sala de teste</h3><p>Uma página que simula o WhatsApp para testar a IA deste número sem usar o celular. Dá para mandar o link para um cliente ou prospect experimentar.</p></div>
+      <label class="switch"><input type="checkbox" id="sl-on"><span></span></label></div>
+      <div class="panel-body" id="sl"></div></div>
     <div class="panel"><div class="panel-head"><div><h3>Chave do Gemini</h3><p>A IA usa a chave da sua conta Google para gerar as respostas.</p></div></div><div id="ai"></div></div>
     <div class="panel"><div class="panel-head"><div><h3>Últimos atendimentos</h3><p>O que a IA respondeu e o que fez em cada conversa.</p></div><button class="btn btn-sm" onclick="logs()">Atualizar</button></div><div id="lg"></div></div>
   </div>`;
@@ -27,7 +30,11 @@ let me;
     try { await api('/api/ai', { method: 'PATCH', body: { ia_ativa: e.target.checked } }); toast(e.target.checked ? 'Atendimento automático ligado' : 'Atendimento automático desligado', 'ok'); estado(); }
     catch (err) { e.target.checked = !e.target.checked; toast(err.message, 'err'); }
   };
-  estado(); logs();
+  estado(); logs(); sala();
+  q('sl-on').onchange = async (e) => {
+    try { await api('/api/sala', { method: 'PATCH', body: { ativa: e.target.checked } }); toast(e.target.checked ? 'Sala de teste ligada' : 'Sala de teste desligada', 'ok'); sala(); }
+    catch (err) { e.target.checked = !e.target.checked; toast(err.message, 'err'); }
+  };
 })();
 
 async function estado() {
@@ -45,6 +52,35 @@ async function estado() {
     q('req').innerHTML = itens.map(([ok, t, href]) => '<li><span class="ck ' + (ok ? 'done' : '') + '" style="width:20px;height:20px;font-size:11px">' + (ok ? '✓' : '') + '</span><span style="flex:1">' + t + '</span>' + (!ok && href ? '<a class="btn btn-sm" href="' + href + '">Resolver</a>' : '') + '</li>').join('')
       + (itens.every(i => i[0]) ? '<li><div class="notice notice-ok" style="margin:6px 0 0;flex:1">Tudo pronto. Mande uma mensagem de outro celular para testar. A IA espera alguns segundos para juntar mensagens seguidas antes de responder.</div></li>' : '');
   } catch (e) { toast(e.message, 'err'); }
+}
+
+async function sala() {
+  try {
+    const r = await api('/api/sala');
+    q('sl-on').checked = r.ativa;
+    if (!r.ativa) { q('sl').innerHTML = '<p class="muted" style="margin:0">Ligue para gerar o link. Marcações feitas na sala entram na agenda como teste, e as conversas não aparecem em Conversas.</p>'; return; }
+    const link = new URL('sala.html?t=' + r.token, location.href).href;
+    q('sl').innerHTML = `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input class="input" id="sl-l" value="${escapeHtml(link)}" readonly style="flex:1;min-width:240px">
+        <button class="btn" id="sl-c">Copiar link</button>
+        <a class="btn btn-primary" href="${escapeHtml(link)}" target="_blank" rel="noopener">Abrir sala</a>
+      </div>
+      <p class="small soft" style="margin:10px 0 0">${r.visitantes} conversa(s) de teste · ${r.mensagens} mensagem(ns) · ${r.marcacoes} marcação(ões) de teste. Limite de 80 mensagens por visitante por dia.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn btn-sm" id="sl-x">Apagar todos os testes</button>
+        <button class="btn btn-sm btn-ghost" id="sl-n">Gerar novo link</button>
+      </div>`;
+    q('sl-c').onclick = () => navigator.clipboard.writeText(link).then(() => toast('Link copiado', 'ok'));
+    q('sl-x').onclick = async () => {
+      if (!confirm('Apagar todas as conversas, marcações e lembretes feitos na sala de teste deste número?')) return;
+      try { const x = await api('/api/sala/limpar', { method: 'POST' }); toast(x.removidos + ' conversa(s) de teste apagada(s)', 'ok'); sala(); logs(); } catch (e) { toast(e.message, 'err'); }
+    };
+    q('sl-n').onclick = async () => {
+      if (!confirm('Gerar um link novo? O link atual para de funcionar.')) return;
+      try { await api('/api/sala/novo-link', { method: 'POST' }); toast('Novo link gerado', 'ok'); sala(); } catch (e) { toast(e.message, 'err'); }
+    };
+  } catch (e) { q('sl').innerHTML = '<div class="notice notice-err" style="margin:0">' + escapeHtml(e.message) + '</div>'; }
 }
 
 async function logs() {
