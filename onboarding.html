@@ -34,31 +34,35 @@ function render() {
   ({ 1: passoModelo, 2: passoEmpresa, 3: passoIA, 4: passoWhats })[etapa]();
 }
 
-function passoModelo() {
+let presets = null, presetEscolhido = null;
+const DESC_PRESET = { barbearia: 'Cortes, barba e horários com os barbeiros.', clinica: 'Consultas médicas e nutrição, com cuidados de saúde na IA.', terapeuta: 'Sessões de psicologia, com sigilo e protocolo de crise.', dentista: 'Avaliação, tratamentos e urgência odontológica.', advocacia: 'Triagem e consultas, sem parecer jurídico pela IA.', imobiliaria: 'Imóveis para venda e aluguel, com visitas agendadas.', delivery: 'Cardápio, pedidos com entrega e cardápio digital.', varejo: 'Loja com catálogo, fotos e vendedor humano.', ecommerce: 'Loja online com link de compra e recuperação de vendas.' };
+const ICONE_PRESET = { barbearia: 'scissors', clinica: 'heart', dentista: 'spark', terapeuta: 'chat', advocacia: 'building', imobiliaria: 'building', delivery: 'bag', varejo: 'store', ecommerce: 'box' };
+async function passoModelo() {
+  if (!presets) { try { presets = (await api('/api/modelos')).modelos; } catch { presets = []; } }
+  const card = (on, onclick, ic, titulo, desc, extra) => `<button type="button" class="model ${on ? 'on' : ''}" onclick="${onclick}" aria-pressed="${on}"><div class="model-ic">${icon(ic, 24)}</div><h3>${titulo}</h3><p>${desc}</p>${extra || ''}</button>`;
   q('step').innerHTML = `
     <div class="ob-step">Passo 1 de ${TOTAL}</div>
-    <h1>Qual é o segmento deste número?</h1>
-    <p class="lead">Isso define como a IA atende e quais telas este número usa. Cada número tem o seu segmento. Depois de escolher, a troca só pode ser feita pelo suporte.</p>
-    <div class="models">${Object.entries(MODELOS).map(([k, m]) => `
-      <button type="button" class="model ${escolhido === k ? 'on' : ''}" onclick="escolher('${k}')" aria-pressed="${escolhido === k}">
-        <div class="model-ic">${icon(m.icon, 24)}</div>
-        <h3>${m.nome}</h3>
-        <p>${m.desc}</p>
-        <ul>${m.faz.map(f => '<li>' + f + '</li>').join('')}</ul>
-        <div class="model-ex">${m.ex}</div>
-      </button>`).join('')}
-    </div>
-    <div class="ob-actions"><span></span><button class="btn btn-primary btn-lg" id="go" ${escolhido ? '' : 'disabled'}>Continuar</button></div>`;
+    <h1>Qual é o seu tipo de negócio?</h1>
+    <p class="lead">Escolha um modelo pronto: o número já vem com regras, perguntas frequentes, horários e serviços ou produtos de exemplo para você só ajustar. Depois de escolher, a troca de segmento só pode ser feita pelo suporte.</p>
+    <div class="section-title">Modelos prontos</div>
+    <div class="models">${presets.map((p) => card(presetEscolhido === p.chave, `escolherPreset('${p.chave}')`, ICONE_PRESET[p.chave] || 'spark', escapeHtml(p.rotulo), escapeHtml(DESC_PRESET[p.chave] || p.descricao.split('.')[0] + '.'),
+      `<div class="model-ex">${p.servicos ? p.servicos + ' serviços de exemplo' : p.produtos + ' produtos de exemplo'} · ${escapeHtml(MODELOS[p.segmento]?.nome || '')}</div>`)).join('')}</div>
+    <div class="section-title" style="margin-top:22px">Ou comece do zero</div>
+    <div class="models">${Object.entries(MODELOS).map(([k, m]) => card(escolhido === k && !presetEscolhido, `escolher('${k}')`, m.icon, m.nome, m.desc, `<div class="model-ex">${m.ex}</div>`)).join('')}</div>
+    <div class="ob-actions"><span></span><button class="btn btn-primary btn-lg" id="go" ${escolhido || presetEscolhido ? '' : 'disabled'}>Continuar</button></div>`;
   q('go').onclick = async (ev) => {
-    if (!confirm('Confirmar "' + MODELOS[escolhido].nome + '"? Essa escolha não pode ser trocada por aqui depois.')) return;
-    btnLoading(ev.currentTarget, true, 'Salvando…');
+    const nome = presetEscolhido ? presets.find((p) => p.chave === presetEscolhido).rotulo : MODELOS[escolhido].nome;
+    if (!confirm('Confirmar "' + nome + '"? O segmento não pode ser trocado por aqui depois.')) return;
+    btnLoading(ev.currentTarget, true, 'Preparando…');
     try {
-      await api('/api/account/modelo', { method: 'PUT', body: { modelo: escolhido } });
-      me.account.modelo = escolhido; etapa = 2; render();
-    } catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
+      const r = await api('/api/account/modelo', { method: 'PUT', body: presetEscolhido ? { preset: presetEscolhido } : { modelo: escolhido } });
+      me.account.modelo = r.modelo; etapa = 2; render();
+      if (presetEscolhido) toast('Modelo aplicado. Revise os dados, os nomes da equipe e os preços.', 'ok');
+    } catch (e) { toast(e.message, 'err'); btnLoading(null, false); }
   };
 }
-window.escolher = (k) => { escolhido = k; passoModelo(); };
+window.escolherPreset = (k) => { presetEscolhido = k; escolhido = null; passoModelo(); };
+window.escolher = (k) => { escolhido = k; presetEscolhido = null; passoModelo(); };
 
 function passoEmpresa() {
   q('step').innerHTML = `

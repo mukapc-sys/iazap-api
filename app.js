@@ -47,11 +47,21 @@ async function loadMe({ skipOnboarding = false } = {}) {
   const me = await api('/api/auth/me');
   if (me.numero && me.numero.id !== IZ.num()) localStorage.setItem('iz_num', me.numero.id);
   sessionStorage.setItem('iz_me', JSON.stringify(me));
-  if (!skipOnboarding && (!me.account.modelo || !me.account.onboarding_ok)) {
+  if (me.termos_pendentes) setTimeout(() => pedirTermos(me.termos_pendentes), 50);
+  if (!skipOnboarding && me.user.role !== 'atendente' && (!me.account.modelo || !me.account.onboarding_ok)) {
     location.href = 'onboarding.html';
     throw new Error('onboarding');
   }
   return me;
+}
+
+function pedirTermos(t) {
+  if (document.getElementById('termos-bg')) return;
+  const bg = document.createElement('div'); bg.id = 'termos-bg'; bg.className = 'modal-ov open'; bg.style.zIndex = '300';
+  bg.innerHTML = '<div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="tm-t"><div class="modal-head"><h3 id="tm-t">Termos de uso e privacidade</h3></div><div class="modal-body"><p class="muted" style="margin-top:0">Para continuar usando o IA ZAP, leia e aceite a versão ' + escapeHtml(t.versao) + ' dos termos.</p><div style="white-space:pre-wrap;max-height:48vh;overflow:auto;background:var(--bg);border-radius:8px;padding:14px;font-size:13px">' + escapeHtml(t.termos) + '\n\n' + escapeHtml(t.privacidade) + '</div><label class="check" style="margin-top:14px"><input type="checkbox" id="tm-ok">Li e aceito os termos de uso e a política de privacidade</label></div><div class="modal-foot"><button class="btn btn-ghost" onclick="IZ.clear();location.href=\'login.html\'">Sair</button><button class="btn btn-primary" id="tm-go" disabled>Aceitar e continuar</button></div></div>';
+  document.body.appendChild(bg);
+  document.getElementById('tm-ok').onchange = (e) => { document.getElementById('tm-go').disabled = !e.target.checked; };
+  document.getElementById('tm-go').onclick = async () => { try { await api('/api/account/termos', { method: 'POST' }); bg.remove(); toast('Termos aceitos', 'ok'); } catch (e) { toast(e.message, 'err'); } };
 }
 
 // ---------- ícones ----------
@@ -67,6 +77,9 @@ const I = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   book: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/>',
   plug: '<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01"/>',
+  heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   store: '<path d="M3 9 4.5 4h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 11v10h14V11"/>',
@@ -143,7 +156,9 @@ function renderShell(activeKey, opts = {}) {
     ? `<span class="sb-item off" title="Chega em uma próxima atualização">${icon(it.icon)}<span>${it.label}</span><span class="sb-soon">em breve</span></span>`
     : `<a href="${it.href}" class="sb-item ${it.key === activeKey ? 'active' : ''}">${icon(it.icon)}<span>${it.label}</span>${extra}</a>`;
 
-  const nav = `
+  const atendente = me.user?.role === 'atendente';
+  const ATEND = ['inicio', 'inbox', 'contatos', 'agendadas', 'agenda', 'pedidos', 'suporte'];
+  const navCompleto = `
     ${item({ key: 'inicio', label: 'Início', icon: 'home', href: 'inicio.html' })}
     <div class="sb-section">Atendimento</div>
     ${item({ key: 'inbox', label: 'Conversas', icon: 'chat', href: 'inbox.html' }, '<span class="sb-badge hidden" id="sb-unread"></span>')}
@@ -162,7 +177,15 @@ function renderShell(activeKey, opts = {}) {
     ${item({ key: 'whatsapp', label: 'WhatsApp', icon: 'phone', href: 'whatsapp.html' }, `<span class="wa-dot ${me.setup.whatsapp ? 'on' : ''}" style="margin-left:auto;margin-right:0"></span>`)}
     ${item({ key: 'integracoes', label: 'Integrações', icon: 'plug', href: 'integracoes.html' })}
     ${item({ key: 'numeros', label: 'Números', icon: 'swap', href: 'numeros.html' })}
+    ${item({ key: 'usuarios', label: 'Usuários', icon: 'users', href: 'usuarios.html' })}
+    <div class="sb-section">Resultados e ajuda</div>
+    ${item({ key: 'relatorios', label: 'Relatórios', icon: 'chart', href: 'relatorios.html' })}
+    ${item({ key: 'suporte', label: 'Suporte', icon: 'help', href: 'suporte.html' })}
   `;
+  const nav = atendente ? (() => { const d = document.createElement('div'); d.innerHTML = navCompleto;
+    d.querySelectorAll('a.sb-item, span.sb-item').forEach((a) => { const k = (a.getAttribute('href') || '').replace('.html', '').replace('inbox', 'inbox'); if (!ATEND.includes(k)) a.remove(); });
+    d.querySelectorAll('.sb-section').forEach((s) => { let n = s.nextElementSibling; if (!n || n.classList.contains('sb-section')) s.remove(); });
+    return d.innerHTML; })() : navCompleto;
   const nAtual = me.numero || {};
   const seletor = `
     <div class="num-sel">

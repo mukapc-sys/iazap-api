@@ -15,7 +15,7 @@ if (!requireAuth()) throw new Error('auth');
   const feitos = itens.filter(i => i.ok).length;
   q('content').innerHTML = `<div class="page">
     <div class="metrics" id="mt">${'<div class="metric"><div class="spinner"></div></div>'.repeat(4)}</div>
-    <div class="panel">
+    <div class="panel ${me.user.role === 'atendente' ? 'hidden' : ''}">
       <div class="panel-head"><div><h3>Configuração</h3><p>${feitos} de ${itens.length} concluídos</p></div>${feitos === itens.length ? '<span class="pill pill-ok">Pronto</span>' : ''}</div>
       <ul class="checklist">${itens.map(i => `<li>
         <span class="ck ${i.ok ? 'done' : ''}">${i.ok ? '✓' : ''}</span>

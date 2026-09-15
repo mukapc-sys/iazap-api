@@ -17,7 +17,7 @@ function entrar(erro) {
 
 async function painel() {
   q('root').innerHTML = `<div class="main" style="min-height:100vh">
-    <header class="topbar">${logoHTML()}<div class="topbar-actions"><button class="btn btn-primary" onclick="nova()">Criar conta</button><button class="btn btn-ghost" onclick="AK.clear();entrar()">Sair</button></div></header>
+    <header class="topbar">${logoHTML()}<div class="topbar-actions"><a class="btn" href="admin-vendas.html">Vendas, suporte e configurações</a><button class="btn btn-primary" onclick="nova()">Criar conta</button><button class="btn btn-ghost" onclick="AK.clear();entrar()">Sair</button></div></header>
     <main class="content"><div class="metrics" id="mt"></div>
       <div style="margin-bottom:12px"><input class="input" id="fq" placeholder="Buscar empresa ou email" style="max-width:340px"></div>
       <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Empresa</th><th>Dono</th><th>Números</th><th>Segmentos</th><th>Gemini</th><th>Contatos</th><th>Status</th><th>Criada</th><th></th></tr></thead>

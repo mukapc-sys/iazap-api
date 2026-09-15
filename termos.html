@@ -1,0 +1,6 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Termos de uso — IA ZAP</title></head><body>
+<div class="page" style="max-width:780px;padding-top:30px"><div id="logo"></div><div id="c" style="white-space:pre-wrap;line-height:1.6;margin-top:20px"><div class="spinner"></div></div></div>
+<script>
+q('logo').innerHTML = logoHTML();
+api('/publico/termos', { noAuth: true }).then(r => { q('c').textContent = r.termos + '\n\n' + r.privacidade + '\n\nVersão ' + r.versao; }).catch(e => { q('c').textContent = e.message; });
+</script></body></html>

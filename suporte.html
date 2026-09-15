@@ -1,0 +1,29 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Suporte — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+const ST = { aberto: ['Aguardando suporte', 'pill-warn'], respondido: ['Respondido', 'pill-ok'], fechado: ['Fechado', ''] };
+(async () => {
+  await loadMe({ skipOnboarding: true });
+  renderShell('suporte', { title: 'Suporte' });
+  q('topbar-actions').innerHTML = '<button class="btn btn-primary" onclick="novo()">' + icon('plus', 16) + ' Abrir chamado</button>';
+  q('content').innerHTML = '<div class="page" style="max-width:900px"><p class="muted" style="margin-top:0">Descreva o que aconteceu, em qual número e, se puder, o horário. Você recebe a resposta aqui, por e-mail e pelo WhatsApp.</p><div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Assunto</th><th>Status</th><th>Atualizado</th></tr></thead><tbody id="tb"><tr><td colspan="3"><div class="spinner"></div></td></tr></tbody></table></div></div>';
+  carregar();
+})();
+async function carregar() {
+  const r = await api('/api/suporte');
+  q('tb').innerHTML = r.tickets.length ? r.tickets.map(t => '<tr style="cursor:pointer" onclick="abrir(\'' + t.id + '\')"><td><b style="color:var(--ink)">' + escapeHtml(t.assunto) + '</b></td><td><span class="pill ' + ST[t.status][1] + '">' + ST[t.status][0] + '</span></td><td class="small">' + fmtRel(t.atualizado_em) + '</td></tr>').join('') : '<tr><td colspan="3"><div class="empty"><b>Nenhum chamado</b>Precisa de ajuda? Abra um chamado.</div></td></tr>';
+}
+window.novo = () => {
+  openModal('<div class="field"><label for="ta">Assunto</label><input class="input" id="ta" maxlength="120" placeholder="Ex.: IA não responde no Número 2"></div><div class="field"><label for="tt">Descrição</label><textarea class="textarea" id="tt" style="min-height:150px"></textarea></div>',
+    { title: 'Abrir chamado', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="tgo">Enviar</button>' });
+  q('tgo').onclick = async (ev) => { btnLoading(ev.currentTarget, true, 'Enviando…'); try { await api('/api/suporte', { method: 'POST', body: { assunto: q('ta').value, texto: q('tt').value } }); closeModal(); toast('Chamado aberto', 'ok'); carregar(); } catch (e) { toast(e.message, 'err'); btnLoading(null, false); } };
+};
+window.abrir = async (id) => {
+  const r = await api('/api/suporte/' + id);
+  openModal('<div style="max-height:50vh;overflow:auto">' + r.mensagens.map(m => '<div style="background:' + (m.autor === 'suporte' ? 'var(--brand-lt)' : 'var(--bg)') + ';border-radius:10px;padding:10px 12px;margin-bottom:8px"><div class="small" style="font-weight:600">' + (m.autor === 'suporte' ? 'Suporte IA ZAP' : escapeHtml(m.user_nome || 'Você')) + ' <span class="soft">· ' + fmtDate(m.criado_em) + '</span></div><div style="white-space:pre-wrap;margin-top:4px">' + escapeHtml(m.texto) + '</div></div>').join('') + '</div>'
+    + (r.ticket.status !== 'fechado' ? '<div class="field" style="margin-top:10px"><label for="tr">Responder</label><textarea class="textarea" id="tr"></textarea></div>' : '<div class="notice">Chamado fechado. Abra outro se precisar.</div>'),
+    { title: r.ticket.assunto, wide: true, footer: r.ticket.status !== 'fechado' ? '<button class="btn btn-ghost" style="margin-right:auto" id="tfe">Fechar chamado</button><button class="btn" onclick="closeModal()">Voltar</button><button class="btn btn-primary" id="tre">Enviar resposta</button>' : '<button class="btn btn-primary" onclick="closeModal()">Fechar</button>' });
+  if (q('tre')) q('tre').onclick = async () => { try { await api('/api/suporte/' + id + '/responder', { method: 'POST', body: { texto: q('tr').value } }); toast('Resposta enviada', 'ok'); abrir(id); carregar(); } catch (e) { toast(e.message, 'err'); } };
+  if (q('tfe')) q('tfe').onclick = async () => { await api('/api/suporte/' + id + '/fechar', { method: 'POST' }); closeModal(); carregar(); };
+};
+</script></body></html>

@@ -1,0 +1,91 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Vendas e suporte — Admin IA ZAP</title></head><body>
+<div id="root"></div><div id="toast"></div>
+<script>
+const AK = { get: () => sessionStorage.getItem('iz_admin') || '' };
+if (!AK.get()) location.href = 'admin.html';
+const adm = (path, opts = {}) => api('/api/admin' + path, { ...opts, noAuth: true, headers: { 'X-Admin-Key': AK.get() } });
+const SUB = { ativa: ['Ativa', 'pill-ok'], atrasada: ['Atrasada', 'pill-warn'], cancelada: ['Cancelada', ''], reembolsada: ['Reembolsada', 'pill-err'] };
+let aba = new URLSearchParams(location.search).get('aba') || 'assinaturas';
+q('root').innerHTML = `<header class="topbar">${logoHTML()}<div class="topbar-actions"><a class="btn btn-ghost" href="admin.html">Voltar para contas</a></div></header>
+  <div class="page" style="max-width:1150px"><div class="tabs2" id="tabs"></div><div id="area"><div class="spinner"></div></div></div>`;
+function abrir(a) { aba = a; history.replaceState(null, '', '?aba=' + a);
+  q('tabs').innerHTML = [['assinaturas', 'Assinaturas'], ['planos', 'Planos (Hotmart)'], ['suporte', 'Suporte'], ['config', 'Configurações']].map(([k, l]) => '<button class="' + (k === a ? 'on' : '') + '" onclick="abrir(\'' + k + '\')">' + l + '</button>').join('');
+  ({ assinaturas, planos, suporte, config })[a]().catch(e => q('area').innerHTML = '<div class="notice notice-err">' + escapeHtml(e.message) + '</div>'); }
+window.abrir = abrir; abrir(aba);
+
+async function assinaturas() {
+  const r = await adm('/assinaturas'); const s = r.resumo;
+  q('area').innerHTML = `<div class="stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+    ${[['Contas pagantes', s.contas_ativas], ['Pagamentos atrasados', s.atrasadas], ['Bloqueadas (Hotmart)', s.bloqueadas], ['Novas em 30 dias', s.novas_30d]].map(([l, v]) => '<div class="panel" style="padding:14px;margin:0"><div class="small soft">' + l + '</div><div style="font-size:26px;font-weight:700;color:var(--ink)">' + v + '</div></div>').join('')}</div>
+    <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Conta</th><th>Plano</th><th>Status</th><th>Acesso até</th><th>Atualizada</th><th></th></tr></thead><tbody>
+    ${r.assinaturas.map(a => '<tr><td><b style="color:var(--ink)">' + escapeHtml(a.conta) + '</b><div class="small soft">' + escapeHtml(a.email || '') + '</div></td><td class="small">' + escapeHtml(a.plano) + (a.tipo === 'extra' ? ' <span class="tag">extra</span>' : '') + '</td><td><span class="pill ' + (SUB[a.status] || ['', ''])[1] + '">' + (SUB[a.status] || [a.status])[0] + '</span>' + (a.conta_status === 'bloqueado' ? ' <span class="pill pill-err">conta bloqueada</span>' : '') + '</td><td class="small">' + (a.acesso_ate ? fmtDate(a.acesso_ate) : '—') + '</td><td class="small">' + fmtRel(a.atualizado_em) + '</td><td><button class="btn btn-sm" onclick="reenviar(\'' + a.id + '\')">Reenviar acesso</button></td></tr>').join('') || '<tr><td colspan="6"><div class="empty"><b>Nenhuma assinatura ainda</b>Cadastre os planos e o webhook da Hotmart.</div></td></tr>'}
+    </tbody></table></div>
+    <div class="section-title">Eventos recebidos da Hotmart</div>
+    <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Quando</th><th>Evento</th><th>Comprador</th><th>Produto / oferta</th><th>Resultado</th></tr></thead><tbody>
+    ${r.logs.map(l => '<tr><td class="small">' + fmtDate(l.criado_em) + '</td><td class="small"><code>' + escapeHtml(l.evento) + '</code></td><td class="small">' + escapeHtml(l.email || '') + '</td><td class="small">' + escapeHtml(l.produto || '') + (l.oferta ? ' / ' + escapeHtml(l.oferta) : '') + '</td><td class="small">' + escapeHtml(l.resultado || '') + '</td></tr>').join('') || '<tr><td colspan="5"><div class="empty">Nenhum evento</div></td></tr>'}</tbody></table></div>`;
+}
+window.reenviar = async (id) => { try { const r = await adm('/assinaturas/' + id + '/reenviar-acesso', { method: 'POST' }); openModal('<p>E-mail: <b>' + (r.email ? 'enviado' : 'não enviado') + '</b> · WhatsApp: <b>' + (r.whats ? 'enviado' : 'não enviado') + '</b></p><input class="input" readonly value="' + escapeHtml(r.link) + '">', { title: 'Link de acesso', footer: '<button class="btn btn-primary" onclick="closeModal()">Fechar</button>' }); } catch (e) { toast(e.message, 'err'); } };
+
+async function planos() {
+  const r = await adm('/planos');
+  q('area').innerHTML = `<p class="muted" style="margin-top:0">Cada produto (ou oferta) da Hotmart vira um plano. <b>Principal</b> define quantos números a conta tem; <b>Número extra</b> soma números enquanto a assinatura extra estiver ativa. Se o mesmo produto tem ofertas com quantidades diferentes, cadastre uma linha por oferta.</p>
+    <div style="margin-bottom:12px"><button class="btn btn-primary" onclick="plano()">${icon('plus', 16)} Novo plano</button></div>
+    <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Plano</th><th>Tipo</th><th>Produto Hotmart</th><th>Oferta</th><th>Números</th><th>Assinaturas ativas</th><th></th></tr></thead><tbody>
+    ${r.planos.map(p => '<tr class="' + (p.ativo ? '' : 'soft') + '"><td><b style="color:var(--ink)">' + escapeHtml(p.nome) + '</b>' + (p.ativo ? '' : ' <span class="tag">inativo</span>') + '</td><td>' + (p.tipo === 'extra' ? 'Número extra' : 'Principal') + '</td><td><code>' + escapeHtml(p.hotmart_produto) + '</code></td><td class="small">' + escapeHtml(p.hotmart_oferta || 'qualquer') + '</td><td>' + (p.tipo === 'extra' ? '+' : '') + p.numeros + '</td><td>' + p.ativas + '</td><td><button class="btn btn-sm" onclick=\'plano(' + JSON.stringify(p).replace(/'/g, '&#39;') + ')\'>Editar</button></td></tr>').join('') || '<tr><td colspan="7"><div class="empty"><b>Nenhum plano</b></div></td></tr>'}</tbody></table></div>`;
+}
+window.plano = (p = {}) => {
+  openModal(`<div class="field"><label for="pn">Nome</label><input class="input" id="pn" value="${escapeHtml(p.nome || '')}" placeholder="Ex.: IA ZAP Mensal"></div>
+    <div class="row"><div class="field"><label for="pt">Tipo</label><select class="select" id="pt"><option value="base">Principal</option><option value="extra" ${p.tipo === 'extra' ? 'selected' : ''}>Número extra</option></select></div><div class="field"><label for="pq">Números</label><input type="number" min="1" class="input" id="pq" value="${p.numeros || 1}"></div></div>
+    <div class="row"><div class="field"><label for="pp">ID do produto na Hotmart</label><input class="input" id="pp" value="${escapeHtml(p.hotmart_produto || '')}" placeholder="Ex.: 1234567"></div><div class="field"><label for="po">Código da oferta (opcional)</label><input class="input" id="po" value="${escapeHtml(p.hotmart_oferta || '')}" placeholder="Em branco: qualquer oferta"></div></div>
+    ${p.id ? '<label class="check"><input type="checkbox" id="pa" ' + (p.ativo ? 'checked' : '') + '>Plano ativo</label>' : ''}`,
+    { title: p.id ? 'Editar plano' : 'Novo plano', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="pgo">Salvar</button>' });
+  q('pgo').onclick = async () => { try { await adm('/planos' + (p.id ? '/' + p.id : ''), { method: p.id ? 'PUT' : 'POST', body: { nome: q('pn').value, tipo: q('pt').value, numeros: +q('pq').value, hotmart_produto: q('pp').value, hotmart_oferta: q('po').value, ativo: p.id ? q('pa').checked : true } }); closeModal(); toast('Plano salvo', 'ok'); planos(); } catch (e) { toast(e.message, 'err'); } };
+};
+
+async function suporte() {
+  const r = await adm('/suporte?status=' + (window._todos ? 'todos' : 'abertos'));
+  q('area').innerHTML = `<div style="display:flex;justify-content:space-between;margin-bottom:12px"><label class="check"><input type="checkbox" ${window._todos ? 'checked' : ''} onchange="window._todos=this.checked;suporte()">Mostrar fechados</label></div>
+    <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Chamado</th><th>Conta</th><th>Status</th><th>Atualizado</th></tr></thead><tbody>
+    ${r.tickets.map(t => '<tr style="cursor:pointer" onclick="ticket(\'' + t.id + '\')"><td><b style="color:var(--ink)">' + escapeHtml(t.assunto) + '</b>' + (t.ultima_msg_autor === 'cliente' && t.status !== 'fechado' ? ' <span class="pill pill-warn">aguardando você</span>' : '') + '</td><td class="small">' + escapeHtml(t.conta) + '<div class="soft">' + escapeHtml(t.email || '') + '</div></td><td class="small">' + t.status + '</td><td class="small">' + fmtRel(t.atualizado_em) + '</td></tr>').join('') || '<tr><td colspan="4"><div class="empty"><b>Nenhum chamado</b></div></td></tr>'}</tbody></table></div>`;
+}
+window.suporte = suporte;
+window.ticket = async (id) => {
+  const r = await adm('/suporte/' + id);
+  openModal('<div class="small soft" style="margin-bottom:8px">' + escapeHtml(r.ticket.conta) + '</div><div style="max-height:45vh;overflow:auto">' + r.mensagens.map(m => '<div style="background:' + (m.autor === 'suporte' ? 'var(--brand-lt)' : 'var(--bg)') + ';border-radius:10px;padding:10px 12px;margin-bottom:8px"><div class="small" style="font-weight:600">' + escapeHtml(m.user_nome || m.autor) + ' <span class="soft">· ' + fmtDate(m.criado_em) + '</span></div><div style="white-space:pre-wrap;margin-top:4px">' + escapeHtml(m.texto) + '</div></div>').join('') + '</div><div class="field" style="margin-top:10px"><label for="rr">Resposta</label><textarea class="textarea" id="rr" style="min-height:110px"></textarea><div class="hint">O cliente recebe por e-mail e WhatsApp.</div></div>',
+    { title: r.ticket.assunto, wide: true, footer: '<button class="btn" onclick="closeModal()">Voltar</button><button class="btn" id="rf">Responder e fechar</button><button class="btn btn-primary" id="rg">Responder</button>' });
+  const env = async (fechar) => { try { await adm('/suporte/' + id + '/responder', { method: 'POST', body: { texto: q('rr').value, fechar } }); closeModal(); toast('Resposta enviada', 'ok'); suporte(); } catch (e) { toast(e.message, 'err'); } };
+  q('rg').onclick = () => env(false); q('rf').onclick = () => env(true);
+};
+
+async function config() {
+  const r = await adm('/config'); const c = r.config, cap = r.capacidade;
+  const painel = new URL('.', location.href).href;
+  if (!c.painel_url) { await adm('/config', { method: 'PUT', body: { painel_url: painel } }); return config(); }
+  const hook = c.hotmart_token ? window.API.replace(/\/$/, '') + '/hotmart/' + c.hotmart_token : '(salve uma vez para gerar)';
+  q('area').innerHTML = `
+    <div class="panel"><div class="panel-head"><div><h3>Hotmart</h3><p>Em Ferramentas → Webhook (API e notificações), crie uma configuração com este endereço e marque os eventos de compra aprovada, completa, atrasada, cancelada, reembolso, chargeback e cancelamento de assinatura.</p></div></div><div class="panel-body">
+      <div class="field"><label>Endereço do webhook</label><div style="display:flex;gap:8px"><input class="input" readonly value="${escapeHtml(hook)}"><button class="btn" onclick="navigator.clipboard.writeText('${hook}').then(()=>toast('Copiado','ok'))">Copiar</button></div></div>
+      <div class="row"><div class="field"><label for="c-hot">Hottok (da sua conta Hotmart)</label><input class="input" id="c-hot" value="${escapeHtml(c.hotmart_hottok || '')}"></div><div class="field"><label for="c-tol">Dias de tolerância no atraso</label><input type="number" min="0" max="30" class="input" id="c-tol" value="${c.tolerancia_dias}"></div></div>
+      <div class="field"><label for="c-ren">Link para renovar ou pagar</label><input class="input" id="c-ren" value="${escapeHtml(c.link_renovacao || '')}" placeholder="https://pay.hotmart.com/..."><div class="hint">Vai nos avisos de atraso e bloqueio e na tela de login bloqueado.</div></div></div></div>
+    <div class="panel"><div class="panel-head"><div><h3>Avisos para clientes</h3><p>Acesso, atraso, bloqueio e respostas do suporte saem por e-mail (Resend) e pelo WhatsApp de um número seu conectado.</p></div></div><div class="panel-body">
+      ${r.resend ? '<div class="notice notice-ok">Resend configurada no Worker.</div>' : '<div class="notice notice-err">Sem e-mail: adicione o secret <code>RESEND_KEY</code> no Worker (Settings → Variables and Secrets) e verifique o domínio do remetente na Resend.</div>'}
+      <div class="row"><div class="field"><label for="c-rem">Remetente do e-mail</label><input class="input" id="c-rem" value="${escapeHtml(c.email_remetente || '')}" placeholder="IA ZAP &lt;acesso@seudominio.com.br&gt;"></div>
+        <div class="field"><label for="c-num">Número que envia os avisos no WhatsApp</label><select class="select" id="c-num"><option value="">Não enviar por WhatsApp</option>${r.numeros_conectados.map(n => '<option value="' + n.id + '" ' + (n.id === c.suporte_numero_id ? 'selected' : '') + '>' + escapeHtml(n.conta + ' · ' + n.nome + ' · ' + fmtPhone(n.numero)) + '</option>').join('')}</select></div></div>
+      <div class="row"><div class="field"><label for="c-adm">Seu WhatsApp (alerta de chamado novo)</label><input class="input" id="c-adm" value="${escapeHtml(c.admin_whatsapp || '')}" placeholder="51999999999"></div>
+        <div class="field"><label for="c-pai">Endereço do painel</label><input class="input" id="c-pai" value="${escapeHtml(c.painel_url)}"><div class="hint">Base dos links de acesso enviados.</div></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><input class="input" id="t-e" placeholder="e-mail de teste" style="max-width:220px"><input class="input" id="t-w" placeholder="WhatsApp de teste" style="max-width:180px"><button class="btn" onclick="testar()">Enviar teste</button></div></div></div>
+    <div class="panel"><div class="panel-head"><div><h3>Capacidade do servidor de WhatsApp</h3><p>Quantos números a Evolution aguenta com folga. Ao chegar no limite, novas conexões são recusadas com aviso para o cliente.</p></div></div><div class="panel-body">
+      <div class="barra" style="height:12px"><i style="width:${Math.min(100, cap.pct)}%;background:${cap.pct >= 90 ? 'var(--danger)' : cap.pct >= 75 ? 'var(--warn)' : 'var(--brand)'}"></i></div>
+      <p class="small" style="margin:8px 0 12px"><b>${cap.usados}</b> números criados (${cap.conectados} conectados) de <b>${cap.limite}</b> · ${cap.livre} vaga(s)${cap.pct >= 75 ? ' · <b style="color:var(--danger)">hora de planejar outro servidor</b>' : ''}</p>
+      <div class="field" style="max-width:220px"><label for="c-evo">Limite de números</label><input type="number" min="1" class="input" id="c-evo" value="${cap.limite}"></div></div></div>
+    <div class="panel"><div class="panel-head"><div><h3>Termos de uso e privacidade</h3><p>Versão atual: ${c.termos_versao}. Publicar nova versão pede aceite de novo a todos os donos de conta no próximo acesso.</p></div></div><div class="panel-body">
+      <div class="field"><label for="c-ter">Termos de uso</label><textarea class="textarea" id="c-ter" style="min-height:200px">${escapeHtml(c.termos_texto)}</textarea></div>
+      <div class="field"><label for="c-pri">Política de privacidade</label><textarea class="textarea" id="c-pri" style="min-height:140px">${escapeHtml(c.privacidade_texto)}</textarea></div>
+      <label class="check"><input type="checkbox" id="c-nv">Publicar como nova versão (pede novo aceite)</label><div class="hint">Página pública: ${escapeHtml(new URL('termos.html', painel).href)}</div></div></div>
+    <div style="position:sticky;bottom:0;background:var(--bg);padding:12px 0;text-align:right"><button class="btn btn-primary btn-lg" id="c-sv">Salvar configurações</button></div>`;
+  q('c-sv').onclick = async (ev) => { btnLoading(ev.currentTarget, true, 'Salvando…');
+    try { await adm('/config', { method: 'PUT', body: { hotmart_hottok: q('c-hot').value, tolerancia_dias: q('c-tol').value, link_renovacao: q('c-ren').value, email_remetente: q('c-rem').value, suporte_numero_id: q('c-num').value, admin_whatsapp: q('c-adm').value, painel_url: q('c-pai').value, evo_limite: q('c-evo').value, termos_texto: q('c-ter').value, privacidade_texto: q('c-pri').value, nova_versao_termos: q('c-nv').checked } }); toast('Configurações salvas', 'ok'); config(); }
+    catch (e) { toast(e.message, 'err'); btnLoading(null, false); } };
+}
+window.testar = async () => { try { const r = await adm('/config/testar-aviso', { method: 'POST', body: { email: q('t-e').value, telefone: q('t-w').value } }); toast('E-mail: ' + (r.email === null ? '—' : r.email ? 'ok' : 'falhou') + ' · WhatsApp: ' + (r.whats === null ? '—' : r.whats ? 'ok' : 'falhou'), r.email === false || r.whats === false ? 'err' : 'ok'); } catch (e) { toast(e.message, 'err'); } };
+</script></body></html>

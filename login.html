@@ -9,11 +9,18 @@
     <div class="field"><label for="l-senha">Senha</label><input type="password" class="input" id="l-senha" required autocomplete="current-password"></div>
     <button type="submit" class="btn btn-primary btn-lg btn-block" id="l-go">Entrar</button>
   </form>
+  <div style="text-align:center;margin-top:14px"><a href="#" id="l-esq" class="small" style="color:var(--ink-mute);text-decoration:underline">Esqueci minha senha</a></div>
 </div></div>
 <script>
 q('logo').innerHTML = logoHTML();
 if (new URLSearchParams(location.search).get('bloqueada')) q('l-msg').innerHTML = '<div class="notice notice-err">Sua conta está bloqueada. Verifique sua assinatura ou fale com o suporte.</div>';
 if (IZ.token()) location.replace('inicio.html');
+q('l-esq').onclick = (e) => {
+  e.preventDefault();
+  openModal('<p class="muted" style="margin-top:0">Informe o e-mail do seu acesso. Enviamos um link para criar uma nova senha por e-mail e, se houver telefone cadastrado, pelo WhatsApp.</p><div class="field"><label for="es-e">E-mail</label><input type="email" class="input" id="es-e" value="' + escapeHtml(q('l-email').value) + '"></div>',
+    { title: 'Esqueci minha senha', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="es-go">Enviar link</button>' });
+  q('es-go').onclick = async (ev) => { btnLoading(ev.currentTarget, true, 'Enviando…'); try { const r = await api('/api/auth/esqueci', { method: 'POST', noAuth: true, body: { email: q('es-e').value } }); closeModal(); q('l-msg').innerHTML = '<div class="notice notice-ok">' + escapeHtml(r.mensagem) + '</div>'; } catch (err) { toast(err.message, 'err'); btnLoading(null, false); } };
+};
 q('f').onsubmit = async (e) => {
   e.preventDefault();
   const b = q('l-go'); btnLoading(b, true, 'Entrando…');
@@ -22,7 +29,7 @@ q('f').onsubmit = async (e) => {
     IZ.save(r.token); IZ.setNum('');
     const me = await api('/api/auth/me');
     sessionStorage.setItem('iz_me', JSON.stringify(me));
-    location.href = (!me.account.modelo || !me.account.onboarding_ok) ? 'onboarding.html' : 'inicio.html';
+    location.href = (me.user.role !== 'atendente' && (!me.account.modelo || !me.account.onboarding_ok)) ? 'onboarding.html' : 'inicio.html';
   } catch (err) {
     q('l-msg').innerHTML = '<div class="notice notice-err">' + escapeHtml(err.message) + '</div>';
     btnLoading(b, false);

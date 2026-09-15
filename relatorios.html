@@ -1,0 +1,56 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Relatórios — IA ZAP</title>
+<style>.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:16px}.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r2);padding:14px}.kpi small{color:var(--ink-mute);font-size:12px;font-weight:600}.kpi b{display:block;font-size:26px;color:var(--ink);margin:4px 0 2px;letter-spacing:-.02em}.kpi span{font-size:12px;color:var(--ink-soft)}.grafico{display:flex;align-items:flex-end;gap:3px;height:160px;padding:10px 0}.grafico div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:1px;min-width:4px}.grafico i{display:block;border-radius:3px 3px 0 0}</style></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+let me, dias = 30;
+(async () => {
+  me = await loadMe();
+  renderShell('relatorios', { title: 'Relatórios' });
+  q('topbar-actions').innerHTML = '<select class="select" id="pd" style="width:auto"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select>';
+  q('pd').onchange = (e) => { dias = +e.target.value; carregar(); };
+  q('content').innerHTML = '<div class="page" style="max-width:1150px" id="pg"><div class="spinner"></div></div>';
+  carregar();
+})();
+const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
+const n = (x) => (x || 0).toLocaleString('pt-BR');
+async function carregar() {
+  try {
+    const r = await api('/api/relatorios?dias=' + dias);
+    const M = r.mensagens || {}, A = r.agenda, P = r.pedidos, F = r.followups || {};
+    const kpi = (t, v, s) => '<div class="kpi"><small>' + t + '</small><b>' + v + '</b><span>' + (s || '') + '</span></div>';
+    let html = '<div class="section-title">Atendimento</div><div class="kpis">'
+      + kpi('Conversas', n(M.conversas), n(r.contatos_novos) + ' cliente(s) novo(s)')
+      + kpi('Mensagens recebidas', n(M.recebidas), n(M.enviadas) + ' enviadas')
+      + kpi('Respondidas pela IA', pct(M.pela_ia, (M.pela_ia || 0) + (M.pela_equipe || 0)), n(M.pela_ia) + ' mensagens da IA')
+      + kpi('Tempo de resposta da IA', r.ia?.tempo_medio_ms ? (r.ia.tempo_medio_ms / 1000).toFixed(1).replace('.', ',') + ' s' : '—', n(r.humano_solicitado) + ' pedido(s) de humano')
+      + '</div>';
+    if (A) html += '<div class="section-title">Agenda</div><div class="kpis">'
+      + kpi('Marcações criadas', n(A.total), pct(A.pela_ia, A.total) + ' pela IA')
+      + kpi('Comparecimento', pct(A.concluidos, (A.concluidos || 0) + (A.faltas || 0)), n(A.faltas) + ' falta(s) · ' + n(A.cancelados) + ' cancelada(s)')
+      + kpi('Faturado (concluídos)', fmtMoney(A.faturado), 'pelo preço dos serviços')
+      + kpi('Previsto (a realizar)', fmtMoney(A.previsto), 'marcações futuras')
+      + '</div>';
+    if (P) html += '<div class="section-title">Pedidos</div><div class="kpis">'
+      + kpi('Pedidos', n(P.validos), n((P.total || 0) - (P.validos || 0)) + ' cancelado(s)')
+      + kpi('Faturamento', fmtMoney(P.faturado), '')
+      + kpi('Ticket médio', P.validos ? fmtMoney(Math.round(P.faturado / P.validos)) : '—', '')
+      + kpi('Feitos pela IA', pct(P.pela_ia, P.total), 'o restante no painel')
+      + '</div>';
+    html += '<div class="section-title">Automações</div><div class="kpis">'
+      + kpi('Campanhas', n(r.campanhas?.enviadas), n(r.campanhas?.campanhas) + ' campanha(s)')
+      + kpi('Follow-ups e recuperação', n(F.enviados), 'mensagens automáticas enviadas')
+      + kpi('Retorno em 7 dias', pct(F.converteram, F.enviados), n(F.converteram) + ' cliente(s) marcaram ou compraram')
+      + '</div>';
+    const porDia = {}; r.serie.forEach(x => porDia[x.dia] = x);
+    const dd = []; for (let i = dias - 1; i >= 0; i--) { const d = new Date(Date.now() - 3 * 3600e3 - i * 864e5).toISOString().slice(0, 10); dd.push(d); }
+    const max = Math.max(1, ...dd.map(d => porDia[d]?.recebidas || 0));
+    html += '<div class="panel"><div class="panel-head"><div><h3>Mensagens por dia</h3><p><span style="display:inline-block;width:10px;height:10px;background:var(--brand-lt);border-radius:2px"></span> recebidas <span style="display:inline-block;width:10px;height:10px;background:var(--brand);border-radius:2px;margin-left:10px"></span> respondidas pela IA</p></div></div><div class="panel-body"><div class="grafico" role="img" aria-label="Gráfico de mensagens por dia">'
+      + dd.map(d => { const x = porDia[d] || {}; const hr = Math.round((x.recebidas || 0) / max * 140), hi = Math.round(Math.min(x.ia || 0, x.recebidas || 0) / max * 140);
+        return '<div title="' + d.split('-').reverse().join('/') + ': ' + (x.recebidas || 0) + ' recebidas, ' + (x.ia || 0) + ' da IA"><i style="height:' + Math.max(0, hr - hi) + 'px;background:var(--brand-lt)"></i><i style="height:' + hi + 'px;background:var(--brand)"></i></div>'; }).join('')
+      + '</div><div style="display:flex;justify-content:space-between" class="small soft"><span>' + dd[0].split('-').reverse().slice(0, 2).join('/') + '</span><span>hoje</span></div></div></div>';
+    if (r.top_servicos?.length) html += '<div class="panel"><div class="panel-head"><div><h3>Serviços mais marcados</h3></div></div><div class="panel-body">' + r.top_servicos.map(s => '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><span>' + escapeHtml(s.nome) + '</span><b>' + s.n + '</b></div>').join('') + '</div></div>';
+    html += '<p class="small soft">Conversas da sala de teste não entram nos números.</p>';
+    q('pg').innerHTML = html;
+  } catch (e) { q('pg').innerHTML = '<div class="notice notice-err">' + escapeHtml(e.message) + '</div>'; }
+}
+</script></body></html>

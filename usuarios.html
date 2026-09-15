@@ -1,0 +1,34 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Usuários — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+let me;
+(async () => {
+  me = await loadMe();
+  renderShell('usuarios', { title: 'Usuários' });
+  if (me.user.role !== 'owner') { q('content').innerHTML = '<div class="notice">Só o dono da conta gerencia usuários.</div>'; return; }
+  q('topbar-actions').innerHTML = '<button class="btn btn-primary" onclick="novo()">' + icon('plus', 16) + ' Novo atendente</button>';
+  q('content').innerHTML = '<div class="page" style="max-width:950px"><p class="muted" style="margin-top:0">Atendentes entram com login próprio e veem só os números liberados: conversas, contatos, agenda, pedidos e mensagens programadas. Não acessam IA, campanhas, integrações, relatórios nem configurações. As mensagens enviadas aparecem com o nome de quem enviou.</p><div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Nome</th><th>Perfil</th><th>Números</th><th>Status</th><th></th></tr></thead><tbody id="tb"></tbody></table></div></div>';
+  carregar();
+})();
+const nomeNum = (id) => (me.numeros.find(n => n.id === id) || {}).nome || '—';
+async function carregar() {
+  const r = await api('/api/usuarios');
+  q('tb').innerHTML = r.usuarios.map(u => '<tr><td><b style="color:var(--ink)">' + escapeHtml(u.nome || '—') + '</b><div class="small soft">' + escapeHtml(u.email) + '</div></td><td>' + (u.role === 'owner' ? '<span class="pill pill-info">Dono</span>' : 'Atendente') + '</td><td class="small">' + (u.role === 'owner' ? 'Todos' : (u.numeros || []).map(nomeNum).map(escapeHtml).join(', ')) + '</td><td>' + (u.ativo ? '<span class="pill pill-ok">Ativo</span>' : '<span class="pill">Desativado</span>') + '</td><td style="text-align:right;white-space:nowrap">'
+    + (u.role === 'owner' ? '' : '<button class="btn btn-sm" onclick=\'editar(' + JSON.stringify({ id: u.id, nome: u.nome, numeros: u.numeros, ativo: u.ativo }).replace(/'/g, '&#39;') + ')\'>Editar</button> <button class="btn btn-sm" onclick="linkSenha(\'' + u.id + '\')">Link de senha</button> <button class="btn btn-sm btn-danger" onclick="excluir(\'' + u.id + '\')">Excluir</button>') + '</td></tr>').join('');
+}
+const checksNums = (sel) => '<div class="checks" id="un">' + me.numeros.map(n => '<label class="check"><input type="checkbox" value="' + n.id + '" ' + ((sel || []).includes(n.id) ? 'checked' : '') + '>' + escapeHtml(n.nome) + '</label>').join('') + '</div>';
+const numsMarcados = () => [...document.querySelectorAll('#un input:checked')].map(i => i.value);
+function mostrarLink(link) { openModal('<p class="muted" style="margin-top:0">Envie este link para o atendente criar a senha. Vale por alguns dias e só pode ser usado uma vez.</p><div style="display:flex;gap:8px"><input class="input" readonly value="' + escapeHtml(link) + '"><button class="btn btn-primary" onclick="navigator.clipboard.writeText(\'' + link + '\').then(()=>toast(\'Copiado\',\'ok\'))">Copiar</button></div>', { title: 'Link para criar a senha', footer: '<button class="btn" onclick="closeModal()">Fechar</button>' }); }
+window.novo = () => {
+  openModal('<div class="row"><div class="field"><label for="uu">Nome</label><input class="input" id="uu"></div><div class="field"><label for="ue">E-mail de acesso</label><input type="email" class="input" id="ue"></div></div><div class="field"><label>Números que pode atender</label>' + checksNums(me.numeros.length === 1 ? [me.numeros[0].id] : []) + '</div><div class="field"><label for="us">Senha (opcional)</label><input type="password" class="input" id="us" placeholder="Em branco: geramos um link para ele criar a senha"></div>',
+    { title: 'Novo atendente', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="ugo">Criar acesso</button>' });
+  q('ugo').onclick = async (ev) => { btnLoading(ev.currentTarget, true, 'Criando…'); try { const r = await api('/api/usuarios', { method: 'POST', body: { nome: q('uu').value, email: q('ue').value, senha: q('us').value, numeros: numsMarcados() } }); carregar(); if (r.link_senha) mostrarLink(r.link_senha); else { closeModal(); toast('Acesso criado', 'ok'); } } catch (e) { toast(e.message, 'err'); btnLoading(null, false); } };
+};
+window.editar = (u) => {
+  openModal('<div class="field"><label for="uu">Nome</label><input class="input" id="uu" value="' + escapeHtml(u.nome || '') + '"></div><div class="field"><label>Números que pode atender</label>' + checksNums(u.numeros) + '</div><label class="check"><input type="checkbox" id="ua" ' + (u.ativo ? 'checked' : '') + '>Acesso ativo</label>',
+    { title: 'Editar atendente', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="ugo">Salvar</button>' });
+  q('ugo').onclick = async () => { try { await api('/api/usuarios/' + u.id, { method: 'PATCH', body: { nome: q('uu').value, numeros: numsMarcados(), ativo: q('ua').checked } }); closeModal(); toast('Salvo', 'ok'); carregar(); } catch (e) { toast(e.message, 'err'); } };
+};
+window.linkSenha = async (id) => { try { const r = await api('/api/usuarios/' + id, { method: 'PATCH', body: { nova_senha_link: true } }); mostrarLink(r.link_senha); } catch (e) { toast(e.message, 'err'); } };
+window.excluir = async (id) => { if (!confirm('Excluir este acesso?')) return; await api('/api/usuarios/' + id, { method: 'DELETE' }); toast('Acesso excluído', 'ok'); carregar(); };
+</script></body></html>
