@@ -1,23 +1,69 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Inteligência artificial — IA ZAP</title></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Inteligência artificial — IA ZAP</title>
+<style>
+.log{display:grid;grid-template-columns:92px 1fr;gap:4px 14px;padding:12px 18px;border-top:1px solid var(--line-2)}
+.log:first-child{border-top:none}
+.log .quando{font-size:12px;color:var(--ink-soft)}
+.log .txt{white-space:pre-wrap;font-size:13px;color:var(--ink-2)}
+.log .meta{font-size:12px;color:var(--ink-mute);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.req li{display:flex;align-items:center;gap:10px;padding:8px 0}
+</style></head><body>
 <script>
 if (!requireAuth()) throw new Error('auth');
+const FERR = { consultar_horarios: 'consultou horários', agendar: 'agendou', meus_agendamentos: 'buscou marcações', remarcar: 'remarcou', cancelar: 'cancelou', transferir_humano: 'passou para humano' };
+let me;
 (async () => {
-  await loadMe();
+  me = await loadMe();
   renderShell('ia', { title: 'Inteligência artificial' });
   q('content').innerHTML = `<div class="page">
-    <div class="panel"><div class="panel-head"><div><h3>Chave do Gemini</h3><p>A IA usa a chave da sua conta Google para gerar as respostas.</p></div></div><div id="ai"></div></div>
-    <div class="panel"><div class="panel-head"><div><h3>Atendimento automático</h3><p>Quando ligado, a IA responde os clientes sozinha. Se alguém da equipe responder, ela pausa naquela conversa.</p></div>
+    <div class="panel"><div class="panel-head"><div><h3>Atendimento automático</h3><p>Com a IA ligada, ela responde os clientes sozinha. Se alguém da equipe responder uma conversa, a IA pausa nela.</p></div>
       <label class="switch"><input type="checkbox" id="ia-on"><span></span></label></div>
-      <div class="panel-body"><div class="notice notice-warn" style="margin:0">A IA começa a responder na próxima atualização do sistema. Deixe a chave validada e os dados da empresa completos para já sair funcionando.</div></div>
+      <div class="panel-body"><ul class="req" id="req" style="list-style:none;margin:0;padding:0"></ul></div>
     </div>
+    <div class="panel"><div class="panel-head"><div><h3>Chave do Gemini</h3><p>A IA usa a chave da sua conta Google para gerar as respostas.</p></div></div><div id="ai"></div></div>
+    <div class="panel"><div class="panel-head"><div><h3>Últimos atendimentos</h3><p>O que a IA respondeu e o que fez em cada conversa.</p></div><button class="btn btn-sm" onclick="logs()">Atualizar</button></div><div id="lg"></div></div>
   </div>`;
-  mountAiKey(q('ai'), { onSaved: carregarToggle });
+  mountAiKey(q('ai'), { onSaved: estado });
   q('ia-on').onchange = async (e) => {
-    try { await api('/api/ai', { method: 'PATCH', body: { ia_ativa: e.target.checked } }); toast(e.target.checked ? 'Atendimento automático ligado' : 'Atendimento automático desligado', 'ok'); }
+    try { await api('/api/ai', { method: 'PATCH', body: { ia_ativa: e.target.checked } }); toast(e.target.checked ? 'Atendimento automático ligado' : 'Atendimento automático desligado', 'ok'); estado(); }
     catch (err) { e.target.checked = !e.target.checked; toast(err.message, 'err'); }
   };
-  carregarToggle();
-  async function carregarToggle() { try { q('ia-on').checked = (await api('/api/ai')).ai.ia_ativa; } catch { } }
+  estado(); logs();
 })();
+
+async function estado() {
+  try {
+    const [ai, m] = [(await api('/api/ai')).ai, await api('/api/auth/me')];
+    q('ia-on').checked = ai.ia_ativa;
+    const s = m.setup;
+    const itens = [
+      [s.whatsapp, 'WhatsApp conectado', 'whatsapp.html'],
+      [s.ia_chave, 'Chave do Gemini válida', null],
+      [s.empresa, 'Dados da empresa preenchidos', 'empresa.html'],
+      ...(m.account.modelo === 'agenda' ? [[s.servicos > 0 && s.profissionais > 0, 'Serviços e profissionais cadastrados', 'servicos.html']] : []),
+      [ai.ia_ativa, 'Atendimento automático ligado', null],
+    ];
+    q('req').innerHTML = itens.map(([ok, t, href]) => '<li><span class="ck ' + (ok ? 'done' : '') + '" style="width:20px;height:20px;font-size:11px">' + (ok ? '✓' : '') + '</span><span style="flex:1">' + t + '</span>' + (!ok && href ? '<a class="btn btn-sm" href="' + href + '">Resolver</a>' : '') + '</li>').join('')
+      + (itens.every(i => i[0]) ? '<li><div class="notice notice-ok" style="margin:6px 0 0;flex:1">Tudo pronto. Mande uma mensagem de outro celular para testar. A IA espera alguns segundos para juntar mensagens seguidas antes de responder.</div></li>' : '');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function logs() {
+  q('lg').innerHTML = '<div class="panel-body"><div class="spinner"></div></div>';
+  try {
+    const r = await api('/api/ai/logs');
+    q('lg').innerHTML = r.logs.length ? r.logs.map(l => `<div class="log">
+      <div class="quando">${fmtDate(l.criado_em)}</div>
+      <div>
+        <div class="meta">
+          <a href="inbox.html?c=${l.contact_id}" style="font-weight:600;color:var(--ink)">${escapeHtml(l.contato_nome || fmtPhone(l.telefone) || 'Contato')}</a>
+          ${l.status === 'erro' ? '<span class="pill pill-err">Erro</span>' : l.status === 'respondeu' ? '<span class="pill pill-ok">Respondeu</span>' : '<span class="pill">Sem resposta</span>'}
+          ${(l.ferramentas || '').split(',').filter(Boolean).map(f => '<span class="tag">' + escapeHtml(FERR[f] || f) + '</span>').join('')}
+          <span class="soft">${l.duracao_ms ? (l.duracao_ms / 1000).toFixed(1).replace('.', ',') + ' s' : ''}</span>
+        </div>
+        ${l.erro ? '<div class="txt" style="color:var(--danger)">' + escapeHtml(l.erro) + '</div>' : ''}
+        ${l.resposta ? '<div class="txt">' + escapeHtml(l.resposta) + '</div>' : ''}
+      </div></div>`).join('') : '<div class="empty"><b>Nenhum atendimento ainda</b>Quando a IA responder alguém, aparece aqui.</div>';
+  } catch (e) { q('lg').innerHTML = '<div class="panel-body"><div class="notice notice-err">' + escapeHtml(e.message) + '</div></div>'; }
+}
 </script>
 </body></html>

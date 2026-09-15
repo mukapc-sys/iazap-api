@@ -8,6 +8,7 @@ if (!requireAuth()) throw new Error('auth');
   const itens = [
     { ok: s.modelo, t: 'Tipo de negócio', d: mod ? mod.nome : 'Não definido', href: null },
     { ok: s.empresa, t: 'Dados da empresa', d: s.empresa ? 'Preenchido. Complete perguntas frequentes e regras para respostas melhores.' : 'Falta descrever a empresa', href: 'empresa.html' },
+    ...(me.account.modelo === 'agenda' ? [{ ok: s.servicos > 0 && s.profissionais > 0, t: 'Serviços e equipe', d: (s.servicos || 0) + ' serviço(s) · ' + (s.profissionais || 0) + ' profissional(is)', href: 'servicos.html' }] : []),
     { ok: s.ia_chave, t: 'Chave do Gemini', d: s.ia_chave ? 'Chave válida' : 'Cadastre para a IA poder responder', href: 'ia.html' },
     { ok: s.whatsapp, t: 'WhatsApp', d: s.whatsapp ? 'Conectado' + (s.whatsapp_numero ? ' · ' + fmtPhone(s.whatsapp_numero) : '') : 'Desconectado', href: 'whatsapp.html' },
   ];
@@ -22,7 +23,7 @@ if (!requireAuth()) throw new Error('auth');
         ${i.href ? '<a class="btn btn-sm" href="' + i.href + '">' + (i.ok ? 'Ver' : 'Configurar') + '</a>' : ''}
       </li>`).join('')}</ul>
     </div>
-    <div class="notice">O atendimento automático da IA é ativado na próxima atualização. Por enquanto, todas as conversas chegam em <a href="inbox.html" style="text-decoration:underline;font-weight:600">Conversas</a> para você responder.</div>
+    <div class="notice ${s.ia_ativa ? 'notice-ok' : ''}">${s.ia_ativa ? 'Atendimento automático <b>ligado</b>. A IA responde os clientes e pausa quando alguém da equipe assume a conversa.' : 'Atendimento automático <b>desligado</b>. As conversas chegam em Conversas para a equipe responder.'} <a href="ia.html" style="text-decoration:underline;font-weight:600">${s.ia_ativa ? 'Ver atendimentos' : 'Ligar a IA'}</a></div>
   </div>`;
   try {
     const st = await api('/api/stats');
