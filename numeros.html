@@ -20,6 +20,7 @@ async function carregar() {
     const r = await api('/api/numeros'); lista = r.numeros; limite = r.limite;
     q('lim').textContent = 'Seu plano: ' + lista.length + ' de ' + limite + ' número(s) em uso.';
     q('add').disabled = lista.length >= limite;
+    q('lim').innerHTML = escapeHtml(q('lim').textContent) + (r.link_numero_extra ? (lista.length >= limite ? '<div class="notice" style="margin-top:10px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>Limite atingido. Contrate um número extra: assim que o pagamento for aprovado, o limite aumenta sozinho.</span><a class="btn btn-primary" target="_blank" rel="noopener" href="' + escapeHtml(r.link_numero_extra) + '">Contratar número extra</a></div>' : ' <a target="_blank" rel="noopener" href="' + escapeHtml(r.link_numero_extra) + '" style="text-decoration:underline">Contratar número extra</a>') : '');
     q('tb').innerHTML = lista.map(n => `<tr>
       <td><div style="font-weight:600;color:var(--ink)">${escapeHtml(n.nome)}${n.id === IZ.num() ? ' <span class="pill pill-ok">Aberto</span>' : ''}</div><div class="small soft">${escapeHtml(n.nome_empresa || '')}</div></td>
       <td>${n.segmento ? escapeHtml(MODELOS[n.segmento]?.nome || n.segmento) : '<span class="pill pill-warn">Não definido</span>'}</td>
@@ -35,7 +36,7 @@ async function carregar() {
 }
 
 function novo() {
-  if (lista.length >= limite) return toast('Limite do plano atingido. Fale com o suporte para contratar mais números.', 'err');
+  if (lista.length >= limite) return toast('Limite do plano atingido. Use o botão Contratar número extra.', 'err');
   openModal('<div class="field"><label for="nn">Nome do número</label><input class="input" id="nn" placeholder="Ex.: Barbearia do João, Clínica Centro"><div class="hint">Só para você identificar no painel. Depois você escolhe o segmento e conecta o WhatsApp.</div></div>',
     { title: 'Adicionar número', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="nn-go">Criar e configurar</button>' });
   q('nn-go').onclick = async (ev) => {
