@@ -1,0 +1,23 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Inteligência artificial — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+(async () => {
+  await loadMe();
+  renderShell('ia', { title: 'Inteligência artificial' });
+  q('content').innerHTML = `<div class="page">
+    <div class="panel"><div class="panel-head"><div><h3>Chave do Gemini</h3><p>A IA usa a chave da sua conta Google para gerar as respostas.</p></div></div><div id="ai"></div></div>
+    <div class="panel"><div class="panel-head"><div><h3>Atendimento automático</h3><p>Quando ligado, a IA responde os clientes sozinha. Se alguém da equipe responder, ela pausa naquela conversa.</p></div>
+      <label class="switch"><input type="checkbox" id="ia-on"><span></span></label></div>
+      <div class="panel-body"><div class="notice notice-warn" style="margin:0">A IA começa a responder na próxima atualização do sistema. Deixe a chave validada e os dados da empresa completos para já sair funcionando.</div></div>
+    </div>
+  </div>`;
+  mountAiKey(q('ai'), { onSaved: carregarToggle });
+  q('ia-on').onchange = async (e) => {
+    try { await api('/api/ai', { method: 'PATCH', body: { ia_ativa: e.target.checked } }); toast(e.target.checked ? 'Atendimento automático ligado' : 'Atendimento automático desligado', 'ok'); }
+    catch (err) { e.target.checked = !e.target.checked; toast(err.message, 'err'); }
+  };
+  carregarToggle();
+  async function carregarToggle() { try { q('ia-on').checked = (await api('/api/ai')).ai.ia_ativa; } catch { } }
+})();
+</script>
+</body></html>

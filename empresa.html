@@ -1,0 +1,19 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><script src="empresa-form.js"></script><title>Dados da empresa — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+(async () => {
+  const me = await loadMe();
+  renderShell('empresa', { title: 'Dados da empresa' });
+  q('topbar-actions').innerHTML = '<button class="btn btn-primary" id="save">Salvar alterações</button>';
+  q('content').innerHTML = '<div class="page"><div id="biz"></div><div style="display:flex;justify-content:flex-end;margin-bottom:30px"><button class="btn btn-primary btn-lg" id="save2">Salvar alterações</button></div></div>';
+  const form = bizForm(q('biz'), { modelo: me.account.modelo });
+  const salvar = async (ev) => {
+    btnLoading(ev.currentTarget, true, 'Salvando…');
+    try { await form.save(); toast('Alterações salvas', 'ok'); sessionStorage.removeItem('iz_me'); }
+    catch (e) { toast(e.message, 'err'); }
+    btnLoading(ev.currentTarget, false);
+  };
+  q('save').onclick = salvar; q('save2').onclick = salvar;
+})();
+</script>
+</body></html>

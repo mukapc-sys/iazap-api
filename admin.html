@@ -1,0 +1,83 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><meta name="robots" content="noindex"><title>Admin — IA ZAP</title></head><body>
+<div id="root"></div><div id="toast"></div>
+<script>
+const AK = { get: () => sessionStorage.getItem('iz_admin') || '', set: (k) => sessionStorage.setItem('iz_admin', k), clear: () => sessionStorage.removeItem('iz_admin') };
+const adm = (path, opts = {}) => api('/api/admin' + path, { ...opts, noAuth: true, headers: { 'X-Admin-Key': AK.get() } });
+let contas = [];
+
+AK.get() ? painel() : entrar();
+
+function entrar(erro) {
+  q('root').innerHTML = `<div class="auth"><div class="auth-card">${logoHTML()}<h1>Painel admin</h1><p class="lead">Área de gestão das contas.</p>
+    ${erro ? '<div class="notice notice-err">' + escapeHtml(erro) + '</div>' : ''}
+    <form id="f"><div class="field"><label for="k">Chave de admin</label><input type="password" class="input" id="k" required></div>
+    <button class="btn btn-primary btn-lg btn-block">Entrar</button></form></div></div>`;
+  q('f').onsubmit = (e) => { e.preventDefault(); AK.set(q('k').value); painel(); };
+}
+
+async function painel() {
+  q('root').innerHTML = `<div class="main" style="min-height:100vh">
+    <header class="topbar">${logoHTML()}<div class="topbar-actions"><button class="btn btn-primary" onclick="nova()">Criar conta</button><button class="btn btn-ghost" onclick="AK.clear();entrar()">Sair</button></div></header>
+    <main class="content"><div class="metrics" id="mt"></div>
+      <div style="margin-bottom:12px"><input class="input" id="fq" placeholder="Buscar empresa ou email" style="max-width:340px"></div>
+      <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Empresa</th><th>Dono</th><th>Modelo</th><th>WhatsApp</th><th>Gemini</th><th>Contatos</th><th>Status</th><th>Criada</th><th></th></tr></thead>
+      <tbody id="tb"><tr><td colspan="9"><div class="spinner"></div></td></tr></tbody></table></div></main></div>`;
+  q('fq').oninput = render;
+  try { contas = (await adm('/accounts')).accounts; render(); }
+  catch (e) { AK.clear(); entrar(e.message); }
+}
+
+function render() {
+  const b = q('fq').value.trim().toLowerCase();
+  const lst = contas.filter(c => !b || (c.nome + ' ' + (c.email || '')).toLowerCase().includes(b));
+  const m = (v, l) => '<div class="metric"><div class="metric-v">' + v + '</div><div class="metric-l">' + l + '</div></div>';
+  q('mt').innerHTML = m(contas.length, 'Contas') + m(contas.filter(c => c.status === 'ativo').length, 'Ativas') + m(contas.filter(c => c.wa_status === 'open').length, 'WhatsApp conectado') + m(contas.filter(c => !c.onboarding_ok).length, 'Sem onboarding');
+  q('tb').innerHTML = lst.length ? lst.map(c => `<tr>
+    <td style="font-weight:600;color:var(--ink)">${escapeHtml(c.nome)}</td>
+    <td>${escapeHtml(c.dono || '')}<div class="small soft">${escapeHtml(c.email || '')}</div></td>
+    <td><select class="select" style="padding:4px 6px;min-width:120px" onchange="setModelo('${c.id}', this.value)">
+      <option value="">Não escolhido</option>${Object.entries(MODELOS).map(([k, v]) => '<option value="' + k + '" ' + (c.modelo === k ? 'selected' : '') + '>' + v.nome + '</option>').join('')}</select></td>
+    <td>${c.wa_status === 'open' ? '<span class="pill pill-ok">' + fmtPhone(c.wa_numero) + '</span>' : '<span class="pill">' + (c.wa_status || 'sem') + '</span>'}</td>
+    <td>${c.key_status === 'ok' ? '<span class="pill pill-ok">ok</span>' : '<span class="pill">' + escapeHtml(c.key_status || 'sem') + '</span>'}</td>
+    <td>${c.contatos}</td>
+    <td>${c.status === 'ativo' ? '<span class="pill pill-ok">Ativa</span>' : '<span class="pill pill-err">Bloqueada</span>'}</td>
+    <td class="small">${fmtDate(c.criado_em)}</td>
+    <td style="white-space:nowrap"><button class="btn btn-sm" onclick="resetSenha('${c.id}')">Nova senha</button>
+      <button class="btn btn-sm ${c.status === 'ativo' ? 'btn-danger' : ''}" onclick="setStatus('${c.id}','${c.status === 'ativo' ? 'bloqueado' : 'ativo'}')">${c.status === 'ativo' ? 'Bloquear' : 'Desbloquear'}</button></td>
+  </tr>`).join('') : '<tr><td colspan="9"><div class="empty"><b>Nenhuma conta</b>Clique em Criar conta.</div></td></tr>';
+}
+
+window.nova = () => {
+  openModal(`<div class="field"><label for="n-e">Nome da empresa</label><input class="input" id="n-e"></div>
+    <div class="field"><label for="n-n">Nome do dono</label><input class="input" id="n-n"></div>
+    <div class="field"><label for="n-m">Email de acesso</label><input class="input" id="n-m" type="email"></div>
+    <div class="field"><label for="n-md">Modelo</label><select class="select" id="n-md"><option value="">Cliente escolhe no primeiro acesso</option>${Object.entries(MODELOS).map(([k, v]) => '<option value="' + k + '">' + v.nome + '</option>').join('')}</select></div>
+    <div class="field"><label for="n-s">Senha</label><input class="input" id="n-s" placeholder="Deixe em branco para gerar"><div class="hint">Mínimo 8 caracteres.</div></div>`,
+    { title: 'Criar conta', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="n-go">Criar conta</button>' });
+  q('n-go').onclick = async (ev) => {
+    btnLoading(ev.currentTarget, true, 'Criando…');
+    try {
+      const r = await adm('/accounts', { method: 'POST', body: { empresa: q('n-e').value.trim(), nome: q('n-n').value.trim(), email: q('n-m').value.trim(), modelo: q('n-md').value || null, senha: q('n-s').value.trim() } });
+      mostrarAcesso(r.email, r.senha); painel();
+    } catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
+  };
+};
+function mostrarAcesso(email, senha) {
+  const link = location.origin + location.pathname.replace(/admin\.html$/, 'login.html');
+  const txt = 'Seu acesso ao IA ZAP\nLink: ' + link + '\nEmail: ' + email + '\nSenha: ' + senha;
+  openModal('<div class="notice notice-ok">Guarde a senha agora. Ela não aparece de novo.</div><textarea class="textarea" id="acc-t" readonly style="min-height:110px">' + escapeHtml(txt) + '</textarea>',
+    { title: 'Dados de acesso', footer: '<button class="btn" onclick="closeModal()">Fechar</button><button class="btn btn-primary" onclick="navigator.clipboard.writeText(q(\'acc-t\').value).then(()=>toast(\'Copiado\',\'ok\'))">Copiar</button>' });
+}
+window.setStatus = async (id, status) => {
+  if (status === 'bloqueado' && !confirm('Bloquear esta conta? O cliente perde o acesso na hora.')) return;
+  try { await adm('/accounts/' + id, { method: 'PATCH', body: { status } }); toast('Status atualizado', 'ok'); painel(); } catch (e) { toast(e.message, 'err'); }
+};
+window.setModelo = async (id, modelo) => {
+  try { await adm('/accounts/' + id, { method: 'PATCH', body: { modelo: modelo || null } }); toast('Modelo atualizado', 'ok'); } catch (e) { toast(e.message, 'err'); painel(); }
+};
+window.resetSenha = async (id) => {
+  if (!confirm('Gerar nova senha? A senha atual para de funcionar.')) return;
+  try { const r = await adm('/accounts/' + id + '/senha', { method: 'POST' }); mostrarAcesso(contas.find(c => c.id === id).email, r.senha); } catch (e) { toast(e.message, 'err'); }
+};
+</script>
+</body></html>

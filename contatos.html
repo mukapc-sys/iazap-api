@@ -1,0 +1,61 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Contatos — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+let pagina = 1, t = null, ultimo = null;
+(async () => {
+  await loadMe();
+  renderShell('contatos', { title: 'Contatos' });
+  q('topbar-actions').innerHTML = '<button class="btn" id="exp">Exportar CSV</button>';
+  q('content').innerHTML = `<div class="page" style="max-width:1100px">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+      <input class="input" id="cq" placeholder="Buscar por nome, telefone ou etiqueta" style="max-width:360px">
+      <span class="small muted" id="ctot"></span>
+    </div>
+    <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr>
+      <th>Nome</th><th>Telefone</th><th>Etiquetas</th><th>Mensagens</th><th>IA</th><th>Última conversa</th><th>Cadastro</th>
+    </tr></thead><tbody id="cb"><tr><td colspan="7"><div class="spinner"></div></td></tr></tbody></table></div>
+    <div style="display:flex;justify-content:center;gap:8px" id="pg"></div>
+  </div>`;
+  q('cq').oninput = () => { clearTimeout(t); t = setTimeout(() => { pagina = 1; carregar(); }, 250); };
+  q('exp').onclick = exportar;
+  carregar();
+})();
+
+async function carregar() {
+  const p = new URLSearchParams({ pagina }); const b = q('cq').value.trim(); if (b) p.set('q', b);
+  try {
+    const r = await api('/api/contacts?' + p); ultimo = r;
+    q('ctot').textContent = r.total + (r.total === 1 ? ' contato' : ' contatos');
+    q('cb').innerHTML = r.contatos.length ? r.contatos.map(c => `<tr class="click" onclick="location.href='inbox.html?c=${c.id}'">
+      <td style="font-weight:600;color:var(--ink)">${escapeHtml(c.nome || '—')}</td>
+      <td>${fmtPhone(c.telefone)}</td>
+      <td>${(c.tags || []).map(x => '<span class="tag">' + escapeHtml(x) + '</span>').join('') || '<span class="soft">—</span>'}</td>
+      <td>${c.total_msgs}</td>
+      <td>${c.ia_pausada ? '<span class="pill pill-warn">Humano</span>' : '<span class="pill pill-ok">IA</span>'}</td>
+      <td>${c.ultima_msg_em ? fmtDate(c.ultima_msg_em) : '—'}</td>
+      <td>${fmtDate(c.criado_em)}</td></tr>`).join('')
+      : '<tr><td colspan="7"><div class="empty"><b>Nenhum contato</b>Os contatos são criados automaticamente quando alguém manda mensagem.</div></td></tr>';
+    q('pg').innerHTML = r.paginas > 1 ? `<button class="btn btn-sm" ${pagina <= 1 ? 'disabled' : ''} onclick="pagina--;carregar()">Anterior</button><span class="small muted" style="align-self:center">Página ${pagina} de ${r.paginas}</span><button class="btn btn-sm" ${pagina >= r.paginas ? 'disabled' : ''} onclick="pagina++;carregar()">Próxima</button>` : '';
+  } catch (e) { q('cb').innerHTML = '<tr><td colspan="7"><div class="empty">' + escapeHtml(e.message) + '</div></td></tr>'; }
+}
+
+async function exportar(ev) {
+  btnLoading(ev.currentTarget, true, 'Gerando…');
+  try {
+    const linhas = [['nome', 'telefone', 'etiquetas', 'mensagens', 'ultima_conversa', 'cadastro']];
+    const b = q('cq').value.trim();
+    for (let p = 1; ; p++) {
+      const qs = new URLSearchParams({ pagina: p }); if (b) qs.set('q', b);
+      const r = await api('/api/contacts?' + qs);
+      r.contatos.forEach(c => linhas.push([c.nome || '', c.telefone, (c.tags || []).join('|'), c.total_msgs, c.ultima_msg_em || '', c.criado_em]));
+      if (p >= r.paginas) break;
+    }
+    const csv = linhas.map(l => l.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'contatos-iazap.csv'; a.click();
+  } catch (e) { toast(e.message, 'err'); }
+  btnLoading(ev.currentTarget, false);
+}
+</script>
+</body></html>

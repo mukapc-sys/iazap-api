@@ -1,0 +1,34 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Início — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+(async () => {
+  const me = await loadMe();
+  renderShell('inicio', { title: 'Início' });
+  const s = me.setup, mod = MODELOS[me.account.modelo];
+  const itens = [
+    { ok: s.modelo, t: 'Tipo de negócio', d: mod ? mod.nome : 'Não definido', href: null },
+    { ok: s.empresa, t: 'Dados da empresa', d: s.empresa ? 'Preenchido. Complete perguntas frequentes e regras para respostas melhores.' : 'Falta descrever a empresa', href: 'empresa.html' },
+    { ok: s.ia_chave, t: 'Chave do Gemini', d: s.ia_chave ? 'Chave válida' : 'Cadastre para a IA poder responder', href: 'ia.html' },
+    { ok: s.whatsapp, t: 'WhatsApp', d: s.whatsapp ? 'Conectado' + (s.whatsapp_numero ? ' · ' + fmtPhone(s.whatsapp_numero) : '') : 'Desconectado', href: 'whatsapp.html' },
+  ];
+  const feitos = itens.filter(i => i.ok).length;
+  q('content').innerHTML = `<div class="page">
+    <div class="metrics" id="mt">${'<div class="metric"><div class="spinner"></div></div>'.repeat(4)}</div>
+    <div class="panel">
+      <div class="panel-head"><div><h3>Configuração</h3><p>${feitos} de ${itens.length} concluídos</p></div>${feitos === itens.length ? '<span class="pill pill-ok">Pronto</span>' : ''}</div>
+      <ul class="checklist">${itens.map(i => `<li>
+        <span class="ck ${i.ok ? 'done' : ''}">${i.ok ? '✓' : ''}</span>
+        <div class="ck-t"><b>${i.t}</b><span>${escapeHtml(i.d)}</span></div>
+        ${i.href ? '<a class="btn btn-sm" href="' + i.href + '">' + (i.ok ? 'Ver' : 'Configurar') + '</a>' : ''}
+      </li>`).join('')}</ul>
+    </div>
+    <div class="notice">O atendimento automático da IA é ativado na próxima atualização. Por enquanto, todas as conversas chegam em <a href="inbox.html" style="text-decoration:underline;font-weight:600">Conversas</a> para você responder.</div>
+  </div>`;
+  try {
+    const st = await api('/api/stats');
+    const m = (v, l) => '<div class="metric"><div class="metric-v">' + (v || 0) + '</div><div class="metric-l">' + l + '</div></div>';
+    q('mt').innerHTML = m(st.nao_lidas, 'Conversas não lidas') + m(st.recebidas_hoje, 'Mensagens recebidas hoje') + m(st.contatos_hoje, 'Novos contatos hoje') + m(st.contatos, 'Contatos no total');
+  } catch (e) { q('mt').innerHTML = ''; }
+})();
+</script>
+</body></html>

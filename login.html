@@ -1,0 +1,32 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Entrar — IA ZAP</title></head><body>
+<div class="auth"><div class="auth-card">
+  <div id="logo"></div>
+  <h1>Entrar</h1>
+  <p class="lead">Use o email e a senha que você recebeu.</p>
+  <div id="l-msg"></div>
+  <form id="f">
+    <div class="field"><label for="l-email">Email</label><input type="email" class="input" id="l-email" required autocomplete="email"></div>
+    <div class="field"><label for="l-senha">Senha</label><input type="password" class="input" id="l-senha" required autocomplete="current-password"></div>
+    <button type="submit" class="btn btn-primary btn-lg btn-block" id="l-go">Entrar</button>
+  </form>
+</div></div>
+<script>
+q('logo').innerHTML = logoHTML();
+if (new URLSearchParams(location.search).get('bloqueada')) q('l-msg').innerHTML = '<div class="notice notice-err">Sua conta está bloqueada. Verifique sua assinatura ou fale com o suporte.</div>';
+if (IZ.token()) location.replace('inicio.html');
+q('f').onsubmit = async (e) => {
+  e.preventDefault();
+  const b = q('l-go'); btnLoading(b, true, 'Entrando…');
+  try {
+    const r = await api('/api/auth/login', { method: 'POST', noAuth: true, body: { email: q('l-email').value, senha: q('l-senha').value } });
+    IZ.save(r.token);
+    const me = await api('/api/auth/me');
+    sessionStorage.setItem('iz_me', JSON.stringify(me));
+    location.href = (!me.account.modelo || !me.account.onboarding_ok) ? 'onboarding.html' : 'inicio.html';
+  } catch (err) {
+    q('l-msg').innerHTML = '<div class="notice notice-err">' + escapeHtml(err.message) + '</div>';
+    btnLoading(b, false);
+  }
+};
+</script>
+</body></html>

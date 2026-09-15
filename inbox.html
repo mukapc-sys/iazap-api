@@ -1,0 +1,207 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Conversas — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+
+let filtro = 'todas', ativo = null, contatos = [], mensagens = [], contato = null, buscaT = null;
+
+(async () => {
+  await loadMe();
+  renderShell('inbox', { title: 'Conversas' });
+  q('content').style.padding = '0';
+  q('content').innerHTML = `
+    <div class="inbox" id="ix">
+      <section class="ix-list">
+        <div class="ix-head"><input class="input" id="ix-q" placeholder="Buscar nome ou telefone" aria-label="Buscar conversa"></div>
+        <div class="ix-filters" id="ix-f"></div>
+        <div class="ix-scroll" id="ix-s"><div class="empty"><div class="spinner"></div></div></div>
+      </section>
+      <section class="conv" id="cv"><div class="conv-empty"><div><b style="color:var(--ink);display:block;margin-bottom:4px">Nenhuma conversa aberta</b>Escolha uma conversa na lista.</div></div></section>
+      <aside class="side hidden" id="sd"></aside>
+    </div>`;
+  q('ix-q').oninput = () => { clearTimeout(buscaT); buscaT = setTimeout(lista, 250); };
+  const alvo = new URLSearchParams(location.search).get('c');
+  await lista();
+  if (alvo) abrir(alvo);
+  setInterval(tick, 8000);
+})();
+
+function filtros(t = {}) {
+  const f = [['todas', 'Todas'], ['nao_lidas', 'Não lidas'], ['humano', 'Com humano'], ['arquivadas', 'Arquivadas']];
+  q('ix-f').innerHTML = f.map(([k, l]) => '<button class="ix-f ' + (k === filtro ? 'on' : '') + '" onclick="setFiltro(\'' + k + '\')">' + l + (t[k] ? '<em>' + t[k] + '</em>' : '') + '</button>').join('');
+}
+window.setFiltro = (k) => { filtro = k; lista(); };
+
+async function lista() {
+  const p = new URLSearchParams({ filtro });
+  const b = q('ix-q').value.trim(); if (b) p.set('q', b);
+  try {
+    const r = await api('/api/inbox?' + p);
+    contatos = r.contatos; filtros(r.totais || {}); renderLista();
+  } catch (e) { q('ix-s').innerHTML = '<div class="empty">' + escapeHtml(e.message) + '</div>'; }
+}
+
+function renderLista() {
+  if (!contatos.length) {
+    const vazio = filtro === 'todas' && !q('ix-q').value
+      ? '<b>Nenhuma conversa ainda</b>Quando um cliente mandar mensagem para o WhatsApp conectado, ela aparece aqui.'
+      : '<b>Nada por aqui</b>Nenhuma conversa neste filtro.';
+    q('ix-s').innerHTML = '<div class="empty">' + vazio + '</div>'; return;
+  }
+  q('ix-s').innerHTML = contatos.map(c => `
+    <div class="ix-item ${c.id === ativo ? 'active' : ''}" onclick="abrir('${c.id}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')abrir('${c.id}')">
+      <div class="avatar">${initial(c.nome || c.telefone)}</div>
+      <div style="min-width:0">
+        <div class="ix-name">${escapeHtml(c.nome || fmtPhone(c.telefone))}</div>
+        <div class="ix-prev">${c.ultima_msg_dir === 'out' ? '✓ ' : ''}${escapeHtml(c.ultima_msg_prev || '')}</div>
+      </div>
+      <div class="ix-meta">
+        <span>${fmtRel(c.ultima_msg_em)}</span>
+        ${c.nao_lidas > 0 ? '<span class="n">' + c.nao_lidas + '</span>' : c.ia_pausada ? '<span class="ix-human">humano</span>' : ''}
+      </div>
+    </div>`).join('');
+}
+
+window.abrir = async (cid) => {
+  ativo = cid; renderLista();
+  q('ix').classList.add('has-conv');
+  q('cv').innerHTML = '<div class="conv-empty"><div class="spinner"></div></div>';
+  try {
+    const r = await api('/api/contacts/' + cid + '/conversation');
+    contato = r.contato; mensagens = r.mensagens;
+    renderConversa(); renderSide();
+    if (contato.nao_lidas > 0) {
+      api('/api/contacts/' + cid + '/read', { method: 'POST' }).then(() => { const c = contatos.find(x => x.id === cid); if (c) { c.nao_lidas = 0; renderLista(); } atualizarBadge(); });
+    }
+  } catch (e) { q('cv').innerHTML = '<div class="conv-empty">' + escapeHtml(e.message) + '</div>'; }
+};
+
+function renderConversa() {
+  const c = contato;
+  q('cv').innerHTML = `
+    <div class="conv-head">
+      <button class="icon-btn mobile-menu" style="display:none" id="cv-back" aria-label="Voltar">${icon('back', 20)}</button>
+      <div class="avatar">${initial(c.nome || c.telefone)}</div>
+      <div class="grow"><div style="font-weight:700;color:var(--ink)">${escapeHtml(c.nome || fmtPhone(c.telefone))}</div><div class="small soft">${fmtPhone(c.telefone)}</div></div>
+    </div>
+    ${c.ia_pausada ? '<div class="conv-bar"><span>Atendimento humano: a IA não responde nesta conversa.</span><button class="btn btn-sm" onclick="setIA(false)">Devolver para a IA</button></div>' : ''}
+    <div class="conv-scroll" id="cv-s"></div>
+    <div class="conv-input">
+      <button class="icon-btn" title="Enviar arquivo por link" aria-label="Enviar arquivo" onclick="modalMidia()">${icon('clip', 22)}</button>
+      <textarea id="cv-t" rows="1" placeholder="Digite uma mensagem" aria-label="Mensagem"></textarea>
+      <button class="icon-btn send" id="cv-go" aria-label="Enviar">${icon('send', 20)}</button>
+    </div>`;
+  if (matchMedia('(max-width:860px)').matches) { q('cv-back').style.display = 'grid'; q('cv-back').onclick = () => { ativo = null; q('ix').classList.remove('has-conv'); renderLista(); }; }
+  const t = q('cv-t');
+  t.addEventListener('input', () => { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; });
+  t.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } });
+  q('cv-go').onclick = enviar;
+  renderMsgs();
+  t.focus();
+}
+
+function renderMsgs(manterScroll) {
+  const box = q('cv-s'); if (!box) return;
+  const noFim = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  if (!mensagens.length) { box.innerHTML = '<div class="conv-day">Sem mensagens salvas</div>'; return; }
+  let dia = '', html = '';
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const ontem = new Date(Date.now() - 864e5).toLocaleDateString('pt-BR');
+  for (const m of mensagens) {
+    const d = parseDate(m.criado_em), ds = d.toLocaleDateString('pt-BR');
+    if (ds !== dia) { dia = ds; html += '<div class="conv-day">' + (ds === hoje ? 'Hoje' : ds === ontem ? 'Ontem' : ds) + '</div>'; }
+    const out = m.direcao === 'out';
+    const who = !out ? '' : m.autor === 'ia' ? '<div class="who">IA</div>' : m.autor === 'celular' ? '<div class="who phone">Pelo celular</div>' : m.atendente ? '<div class="who">' + escapeHtml(m.atendente) + '</div>' : '';
+    const st = out ? ({ enviado: ' ✓', entregue: ' ✓✓', lida: ' ✓✓', falhou: ' · falhou' }[m.status] || '') : '';
+    html += `<div class="bubble ${out ? 'out' : 'in'} ${m.status === 'falhou' ? 'fail' : ''}" ${m.erro ? 'title="' + escapeHtml(m.erro) + '"' : ''}>${who}<div class="txt">${escapeHtml(m.conteudo || '')}</div><div class="meta">${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${st}</div></div>`;
+  }
+  box.innerHTML = html;
+  if (!manterScroll || noFim) box.scrollTop = box.scrollHeight;
+}
+
+async function enviar() {
+  const t = q('cv-t'), texto = t.value.trim();
+  if (!texto) return;
+  t.value = ''; t.style.height = 'auto';
+  const temp = { direcao: 'out', autor: 'humano', conteudo: texto, status: 'enviando', criado_em: new Date().toISOString() };
+  mensagens.push(temp); renderMsgs();
+  try {
+    await api('/api/contacts/' + ativo + '/send', { method: 'POST', body: { tipo: 'text', texto } });
+    temp.status = 'enviado';
+    if (!contato.ia_pausada) { contato.ia_pausada = 1; renderConversa(); renderSide(); } else renderMsgs();
+    lista();
+  } catch (e) { temp.status = 'falhou'; temp.erro = e.message; renderMsgs(); toast(e.message, 'err'); }
+}
+
+window.modalMidia = () => {
+  openModal(`
+    <div class="field"><label for="md-t">Tipo</label><select class="select" id="md-t"><option value="image">Imagem</option><option value="video">Vídeo</option><option value="document">Documento (PDF etc.)</option></select></div>
+    <div class="field"><label for="md-u">Link público do arquivo</label><input class="input" id="md-u" placeholder="https://…"><div class="hint">O envio de arquivos do computador chega numa próxima atualização.</div></div>
+    <div class="field"><label for="md-c">Legenda</label><input class="input" id="md-c"></div>`,
+    { title: 'Enviar arquivo', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="md-go">Enviar arquivo</button>' });
+  q('md-go').onclick = async (ev) => {
+    btnLoading(ev.currentTarget, true, 'Enviando…');
+    try {
+      await api('/api/contacts/' + ativo + '/send', { method: 'POST', body: { tipo: 'media', mediatype: q('md-t').value, url: q('md-u').value.trim(), legenda: q('md-c').value } });
+      closeModal(); toast('Arquivo enviado', 'ok'); recarregarConversa();
+    } catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
+  };
+};
+
+function renderSide() {
+  const c = contato, sd = q('sd');
+  sd.classList.remove('hidden');
+  sd.innerHTML = `
+    <div class="center"><div class="avatar">${initial(c.nome || c.telefone)}</div>
+      <div style="font-weight:700;color:var(--ink)">${escapeHtml(c.nome || '')}</div><div class="small soft">${fmtPhone(c.telefone)}</div></div>
+    <div class="side-toggle">
+      <div><div style="font-weight:600;color:var(--ink);font-size:13px">IA nesta conversa</div><div class="small soft">${c.ia_pausada ? 'Pausada: humano atendendo' : 'Ativa'}</div></div>
+      <label class="switch"><input type="checkbox" ${c.ia_pausada ? '' : 'checked'} onchange="setIA(!this.checked)"><span></span></label>
+    </div>
+    <h4>Nome</h4><input class="input" id="sd-n" value="${escapeHtml(c.nome || '')}">
+    <h4>Etiquetas</h4><div id="sd-tags"></div>
+    <input class="input" id="sd-tg" placeholder="Nova etiqueta e Enter" style="margin-top:4px">
+    <h4>Anotações</h4><textarea class="textarea" id="sd-nota" placeholder="Visível só para a equipe">${escapeHtml(c.nota || '')}</textarea>
+    <div style="margin-top:18px"><button class="btn btn-sm btn-block" onclick="arquivar()">${c.arquivado ? 'Desarquivar conversa' : 'Arquivar conversa'}</button></div>`;
+  renderTags();
+  q('sd-n').onchange = (e) => patch({ nome: e.target.value }).then(lista);
+  q('sd-nota').onchange = (e) => patch({ nota: e.target.value }).then(() => toast('Anotação salva', 'ok'));
+  q('sd-tg').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); const v = e.target.value.trim(); if (!v) return; contato.tags = [...new Set([...(contato.tags || []), v])]; e.target.value = ''; renderTags(); patch({ tags: contato.tags }); } };
+}
+function renderTags() {
+  q('sd-tags').innerHTML = (contato.tags || []).map((t, i) => '<span class="tag">' + escapeHtml(t) + '<button onclick="delTag(' + i + ')" aria-label="Remover etiqueta">×</button></span>').join('') || '<span class="small soft">Sem etiquetas</span>';
+}
+window.delTag = (i) => { contato.tags.splice(i, 1); renderTags(); patch({ tags: contato.tags }); };
+async function patch(body) { try { await api('/api/contacts/' + ativo, { method: 'PATCH', body }); } catch (e) { toast(e.message, 'err'); throw e; } }
+window.setIA = async (pausar) => {
+  await patch({ ia_pausada: pausar });
+  contato.ia_pausada = pausar ? 1 : 0;
+  renderConversa(); renderSide(); lista();
+  toast(pausar ? 'IA pausada nesta conversa' : 'Conversa devolvida para a IA', 'ok');
+};
+window.arquivar = async () => {
+  await patch({ arquivado: !contato.arquivado });
+  toast(contato.arquivado ? 'Conversa desarquivada' : 'Conversa arquivada', 'ok');
+  ativo = null; q('ix').classList.remove('has-conv'); q('sd').classList.add('hidden');
+  q('cv').innerHTML = '<div class="conv-empty">Escolha uma conversa na lista.</div>'; lista();
+};
+
+async function recarregarConversa() {
+  if (!ativo) return;
+  try {
+    const r = await api('/api/contacts/' + ativo + '/conversation');
+    const mudou = r.mensagens.length !== mensagens.filter(m => m.id).length || JSON.stringify(r.mensagens.map(m => m.status)) !== JSON.stringify(mensagens.filter(m => m.id).map(m => m.status));
+    if (mudou) { mensagens = r.mensagens; renderMsgs(true); }
+    if (r.contato.nao_lidas > 0) api('/api/contacts/' + ativo + '/read', { method: 'POST' });
+    if (!!r.contato.ia_pausada !== !!contato.ia_pausada) { contato = r.contato; renderConversa(); renderSide(); }
+  } catch { }
+}
+async function tick() {
+  if (document.hidden) return;
+  const focado = document.activeElement && document.activeElement.id;
+  await lista();
+  await recarregarConversa();
+  atualizarBadge();
+  if (focado && q(focado)) q(focado).focus();
+}
+</script>
+</body></html>

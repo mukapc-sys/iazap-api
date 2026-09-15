@@ -1,0 +1,109 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><script src="empresa-form.js"></script><title>Configuração inicial — IA ZAP</title></head><body>
+<div class="ob">
+  <div class="ob-top"><div id="logo"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Sair</button></div>
+  <div class="ob-main"><div class="ob-inner">
+    <div class="ob-progress" id="prog"></div>
+    <div id="step"></div>
+  </div></div>
+</div>
+<div id="toast"></div>
+<script>
+if (!requireAuth()) throw new Error('auth');
+q('logo').innerHTML = logoHTML();
+
+let me = null, etapa = 1, escolhido = null, wa = null, form = null;
+const TOTAL = 4;
+
+(async () => {
+  try { me = await loadMe({ skipOnboarding: true }); }
+  catch (e) { q('step').innerHTML = '<div class="notice notice-err">' + escapeHtml(e.message) + '</div>'; return; }
+  if (me.account.onboarding_ok && me.account.modelo) return location.replace('inicio.html');
+  etapa = me.account.modelo ? 2 : 1;
+  render();
+})();
+
+function progress() {
+  q('prog').innerHTML = Array.from({ length: TOTAL }, (_, i) => '<div class="' + (i < etapa ? 'on' : '') + '"></div>').join('');
+}
+function render() {
+  if (wa) { wa.stop(); wa = null; }
+  progress();
+  window.scrollTo(0, 0);
+  ({ 1: passoModelo, 2: passoEmpresa, 3: passoIA, 4: passoWhats })[etapa]();
+}
+
+function passoModelo() {
+  q('step').innerHTML = `
+    <div class="ob-step">Passo 1 de ${TOTAL}</div>
+    <h1>Qual é o seu tipo de negócio?</h1>
+    <p class="lead">Isso define como a IA atende e quais telas você vai usar. Depois de escolher, a troca só pode ser feita pelo suporte.</p>
+    <div class="models">${Object.entries(MODELOS).map(([k, m]) => `
+      <button type="button" class="model ${escolhido === k ? 'on' : ''}" onclick="escolher('${k}')" aria-pressed="${escolhido === k}">
+        <div class="model-ic">${icon(m.icon, 24)}</div>
+        <h3>${m.nome}</h3>
+        <p>${m.desc}</p>
+        <ul>${m.faz.map(f => '<li>' + f + '</li>').join('')}</ul>
+        <div class="model-ex">${m.ex}</div>
+      </button>`).join('')}
+    </div>
+    <div class="ob-actions"><span></span><button class="btn btn-primary btn-lg" id="go" ${escolhido ? '' : 'disabled'}>Continuar</button></div>`;
+  q('go').onclick = async (ev) => {
+    if (!confirm('Confirmar "' + MODELOS[escolhido].nome + '"? Essa escolha não pode ser trocada por aqui depois.')) return;
+    btnLoading(ev.currentTarget, true, 'Salvando…');
+    try {
+      await api('/api/account/modelo', { method: 'PUT', body: { modelo: escolhido } });
+      me.account.modelo = escolhido; etapa = 2; render();
+    } catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
+  };
+}
+window.escolher = (k) => { escolhido = k; passoModelo(); };
+
+function passoEmpresa() {
+  q('step').innerHTML = `
+    <div class="ob-step">Passo 2 de ${TOTAL}</div>
+    <h1>Conte sobre a sua empresa</h1>
+    <p class="lead">A IA responde com base nessas informações. Você completa o restante (perguntas frequentes, regras, jeito de falar) depois, em Dados da empresa.</p>
+    <div class="panel"><div class="panel-body" id="biz"></div></div>
+    <div class="ob-actions"><span class="small soft">Modelo: ${escapeHtml(MODELOS[me.account.modelo].nome)}</span><button class="btn btn-primary btn-lg" id="go">Salvar e continuar</button></div>`;
+  form = bizForm(q('biz'), { modelo: me.account.modelo, compact: true });
+  q('go').onclick = async (ev) => {
+    btnLoading(ev.currentTarget, true, 'Salvando…');
+    try { await form.save(); etapa = 3; render(); }
+    catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
+  };
+}
+
+function passoIA() {
+  q('step').innerHTML = `
+    <div class="ob-step">Passo 3 de ${TOTAL}</div>
+    <h1>Conecte a inteligência artificial</h1>
+    <p class="lead">O IA ZAP usa o Gemini, do Google. Cada empresa usa a própria chave, gerada gratuitamente em poucos minutos.</p>
+    <div class="panel" id="ai"></div>
+    <div class="ob-actions"><button class="btn btn-ghost" onclick="etapa=2;render()">${icon('back',16)} Voltar</button>
+      <div style="display:flex;gap:8px"><button class="btn" onclick="etapa=4;render()">Fazer depois</button><button class="btn btn-primary btn-lg" id="go">Continuar</button></div></div>`;
+  mountAiKey(q('ai'));
+  q('go').onclick = async () => {
+    const ai = (await api('/api/ai')).ai;
+    if (ai.status !== 'ok') return toast('Valide a chave ou clique em Fazer depois', 'err');
+    etapa = 4; render();
+  };
+}
+
+function passoWhats() {
+  q('step').innerHTML = `
+    <div class="ob-step">Passo 4 de ${TOTAL}</div>
+    <h1>Conecte o WhatsApp da empresa</h1>
+    <p class="lead">As conversas desse número passam a aparecer no IA ZAP.</p>
+    <div class="panel" id="wa"></div>
+    <div class="ob-actions"><button class="btn btn-ghost" onclick="etapa=3;render()">${icon('back',16)} Voltar</button>
+      <div style="display:flex;gap:8px"><button class="btn" id="later">Conectar depois</button><button class="btn btn-primary btn-lg" id="go">Concluir</button></div></div>`;
+  wa = mountWhatsapp(q('wa'), { onConnected: () => { q('go').focus(); } });
+  const fim = async (ev) => {
+    btnLoading(ev.currentTarget, true, 'Concluindo…');
+    try { await api('/api/account/onboarding', { method: 'POST' }); sessionStorage.removeItem('iz_me'); location.href = 'inicio.html'; }
+    catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
+  };
+  q('go').onclick = fim; q('later').onclick = fim;
+}
+</script>
+</body></html>
