@@ -352,11 +352,14 @@ function mountWhatsapp(el, { onConnected } = {}) {
         <span class="pill pill-ok">Online</span>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px">
+        <button class="btn" id="wa-diag">Mensagens não chegam?</button>
         <button class="btn" id="wa-check">Verificar conexão</button>
         <button class="btn" id="wa-restart">Reiniciar conexão</button>
         <button class="btn btn-danger" id="wa-out">Desconectar</button>
       </div>
+      <div id="wa-diag-box" style="margin-top:16px"></div>
     </div>`;
+    q('wa-diag').onclick = () => rodarDiagnostico(false);
     q('wa-check').onclick = async (ev) => {
       btnLoading(ev.currentTarget, true, 'Verificando…');
       try { const s = await api('/api/instance/status'); if (s.status !== 'open') { toast('WhatsApp desconectado. Leia o QR de novo.', 'err'); load(); } else toast('Conexão ativa', 'ok'); }
@@ -372,6 +375,34 @@ function mountWhatsapp(el, { onConnected } = {}) {
       if (!confirm('Desconectar este WhatsApp? O atendimento automático para até conectar de novo.')) return;
       try { await api('/api/instance', { method: 'DELETE' }); toast('WhatsApp desconectado', 'ok'); load(); } catch (e) { toast(e.message, 'err'); }
     };
+  }
+
+  async function rodarDiagnostico(corrigir) {
+    const box = q('wa-diag-box'); if (!box) return;
+    box.innerHTML = '<div class="notice"><div class="spinner"></div></div>';
+    try {
+      const d = corrigir
+        ? (await api('/api/instance/webhook', { method: 'POST' })).diagnostico
+        : await api('/api/instance/diagnostico');
+      const linha = (ok, t) => `<li style="display:flex;gap:8px;align-items:center;padding:4px 0"><span class="ck ${ok ? 'done' : ''}" style="width:18px;height:18px;font-size:10px;${ok ? '' : 'border-color:var(--danger);background:var(--danger-lt)'}">${ok ? '✓' : ''}</span>${t}</li>`;
+      box.innerHTML = `<div class="panel" style="margin:0"><div class="panel-body">
+        <h3 style="margin-bottom:8px">Diagnóstico</h3>
+        <ul style="list-style:none;margin:0;padding:0;font-size:13px">
+          ${linha(d.evolution_ok, 'Servidor de WhatsApp respondendo')}
+          ${linha(d.status_conexao === 'open', 'Número conectado' + (d.status_conexao !== 'open' ? ' (status: ' + escapeHtml(d.status_conexao) + ')' : ''))}
+          ${linha(d.webhook_ligado, 'Recebimento de mensagens ligado')}
+          ${linha(d.webhook_url_certa, 'Recebimento apontando para o IA ZAP')}
+          ${linha(d.eventos_ok, 'Evento de mensagens novas ativado')}
+        </ul>
+        <p class="small muted" style="margin:10px 0 0">Mensagens recebidas até agora: <b>${d.total_recebidas}</b>${d.ultima_recebida_em ? ' · última em ' + fmtDate(d.ultima_recebida_em) : ''}</p>
+        ${d.erro ? `<div class="notice notice-err" style="margin:10px 0 0">${escapeHtml(d.erro)}</div>` : ''}
+        ${d.tudo_ok
+          ? '<div class="notice notice-ok" style="margin:12px 0 0">Tudo certo. Mande uma mensagem de outro celular e confira em Conversas.</div>'
+          : '<div style="margin-top:12px"><button class="btn btn-primary" id="wa-fix">Corrigir recebimento</button></div>'}
+      </div></div>`;
+      if (q('wa-fix')) q('wa-fix').onclick = () => rodarDiagnostico(true);
+      if (corrigir) toast(d.tudo_ok ? 'Recebimento corrigido' : 'Ainda há pendências', d.tudo_ok ? 'ok' : 'err');
+    } catch (e) { box.innerHTML = `<div class="notice notice-err">${escapeHtml(e.message)}</div>`; }
   }
 
   load();
