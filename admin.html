@@ -20,7 +20,7 @@ async function painel() {
     <header class="topbar">${logoHTML()}<div class="topbar-actions"><button class="btn btn-primary" onclick="nova()">Criar conta</button><button class="btn btn-ghost" onclick="AK.clear();entrar()">Sair</button></div></header>
     <main class="content"><div class="metrics" id="mt"></div>
       <div style="margin-bottom:12px"><input class="input" id="fq" placeholder="Buscar empresa ou email" style="max-width:340px"></div>
-      <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Empresa</th><th>Dono</th><th>Modelo</th><th>WhatsApp</th><th>Gemini</th><th>Contatos</th><th>Status</th><th>Criada</th><th></th></tr></thead>
+      <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Empresa</th><th>Dono</th><th>Números</th><th>Segmentos</th><th>Gemini</th><th>Contatos</th><th>Status</th><th>Criada</th><th></th></tr></thead>
       <tbody id="tb"><tr><td colspan="9"><div class="spinner"></div></td></tr></tbody></table></div></main></div>`;
   q('fq').oninput = render;
   try { contas = (await adm('/accounts')).accounts; render(); }
@@ -31,13 +31,12 @@ function render() {
   const b = q('fq').value.trim().toLowerCase();
   const lst = contas.filter(c => !b || (c.nome + ' ' + (c.email || '')).toLowerCase().includes(b));
   const m = (v, l) => '<div class="metric"><div class="metric-v">' + v + '</div><div class="metric-l">' + l + '</div></div>';
-  q('mt').innerHTML = m(contas.length, 'Contas') + m(contas.filter(c => c.status === 'ativo').length, 'Ativas') + m(contas.filter(c => c.wa_status === 'open').length, 'WhatsApp conectado') + m(contas.filter(c => !c.onboarding_ok).length, 'Sem onboarding');
+  q('mt').innerHTML = m(contas.length, 'Contas') + m(contas.filter(c => c.status === 'ativo').length, 'Ativas') + m(contas.reduce((s, c) => s + c.numeros, 0), 'Números') + m(contas.reduce((s, c) => s + c.conectados, 0), 'WhatsApp conectados');
   q('tb').innerHTML = lst.length ? lst.map(c => `<tr>
     <td style="font-weight:600;color:var(--ink)">${escapeHtml(c.nome)}</td>
     <td>${escapeHtml(c.dono || '')}<div class="small soft">${escapeHtml(c.email || '')}</div></td>
-    <td><select class="select" style="padding:4px 6px;min-width:120px" onchange="setModelo('${c.id}', this.value)">
-      <option value="">Não escolhido</option>${Object.entries(MODELOS).map(([k, v]) => '<option value="' + k + '" ' + (c.modelo === k ? 'selected' : '') + '>' + v.nome + '</option>').join('')}</select></td>
-    <td>${c.wa_status === 'open' ? '<span class="pill pill-ok">' + fmtPhone(c.wa_numero) + '</span>' : '<span class="pill">' + (c.wa_status || 'sem') + '</span>'}</td>
+    <td style="white-space:nowrap">${c.numeros} de <input type="number" min="1" max="100" value="${c.max_numeros}" class="input" style="width:62px;padding:3px 6px;display:inline-block" onchange="setLimite('${c.id}', this.value)"><div class="small soft">${c.conectados} conectado(s)</div></td>
+    <td class="small"><button class="btn btn-sm btn-ghost" onclick="verNumeros('${c.id}')">${escapeHtml(c.segmentos || '—')}</button></td>
     <td>${c.key_status === 'ok' ? '<span class="pill pill-ok">ok</span>' : '<span class="pill">' + escapeHtml(c.key_status || 'sem') + '</span>'}</td>
     <td>${c.contatos}</td>
     <td>${c.status === 'ativo' ? '<span class="pill pill-ok">Ativa</span>' : '<span class="pill pill-err">Bloqueada</span>'}</td>
@@ -51,13 +50,14 @@ window.nova = () => {
   openModal(`<div class="field"><label for="n-e">Nome da empresa</label><input class="input" id="n-e"></div>
     <div class="field"><label for="n-n">Nome do dono</label><input class="input" id="n-n"></div>
     <div class="field"><label for="n-m">Email de acesso</label><input class="input" id="n-m" type="email"></div>
-    <div class="field"><label for="n-md">Modelo</label><select class="select" id="n-md"><option value="">Cliente escolhe no primeiro acesso</option>${Object.entries(MODELOS).map(([k, v]) => '<option value="' + k + '">' + v.nome + '</option>').join('')}</select></div>
+    <div class="field"><label for="n-lim">Limite de números</label><input type="number" min="1" max="100" value="1" class="input" id="n-lim"></div>
+    <div class="field"><label for="n-md">Segmento do primeiro número</label><select class="select" id="n-md"><option value="">Cliente escolhe no primeiro acesso</option>${Object.entries(MODELOS).map(([k, v]) => '<option value="' + k + '">' + v.nome + '</option>').join('')}</select></div>
     <div class="field"><label for="n-s">Senha</label><input class="input" id="n-s" placeholder="Deixe em branco para gerar"><div class="hint">Mínimo 8 caracteres.</div></div>`,
     { title: 'Criar conta', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="n-go">Criar conta</button>' });
   q('n-go').onclick = async (ev) => {
     btnLoading(ev.currentTarget, true, 'Criando…');
     try {
-      const r = await adm('/accounts', { method: 'POST', body: { empresa: q('n-e').value.trim(), nome: q('n-n').value.trim(), email: q('n-m').value.trim(), modelo: q('n-md').value || null, senha: q('n-s').value.trim() } });
+      const r = await adm('/accounts', { method: 'POST', body: { empresa: q('n-e').value.trim(), nome: q('n-n').value.trim(), email: q('n-m').value.trim(), modelo: q('n-md').value || null, max_numeros: +q('n-lim').value || 1, senha: q('n-s').value.trim() } });
       mostrarAcesso(r.email, r.senha); painel();
     } catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
   };
@@ -72,8 +72,19 @@ window.setStatus = async (id, status) => {
   if (status === 'bloqueado' && !confirm('Bloquear esta conta? O cliente perde o acesso na hora.')) return;
   try { await adm('/accounts/' + id, { method: 'PATCH', body: { status } }); toast('Status atualizado', 'ok'); painel(); } catch (e) { toast(e.message, 'err'); }
 };
-window.setModelo = async (id, modelo) => {
-  try { await adm('/accounts/' + id, { method: 'PATCH', body: { modelo: modelo || null } }); toast('Modelo atualizado', 'ok'); } catch (e) { toast(e.message, 'err'); painel(); }
+window.setLimite = async (id, v) => {
+  try { await adm('/accounts/' + id, { method: 'PATCH', body: { max_numeros: +v } }); toast('Limite atualizado', 'ok'); } catch (e) { toast(e.message, 'err'); painel(); }
+};
+window.verNumeros = async (id) => {
+  try {
+    const r = await adm('/accounts/' + id + '/numeros');
+    openModal('<table class="tbl"><thead><tr><th>Número</th><th>Segmento</th><th>WhatsApp</th><th>Contatos</th></tr></thead><tbody>' + r.numeros.map(n => '<tr><td>' + escapeHtml(n.nome) + '</td><td><select class="select" style="padding:4px 6px" onchange="setSegmento(\'' + id + '\',\'' + n.id + '\',this.value)"><option value="">Não definido</option>' + Object.entries(MODELOS).map(([k, v]) => '<option value="' + k + '" ' + (n.segmento === k ? 'selected' : '') + '>' + v.nome + '</option>').join('') + '</select></td><td>' + (n.status === 'open' ? fmtPhone(n.numero) : n.status) + '</td><td>' + n.contatos + '</td></tr>').join('') + '</tbody></table>',
+      { title: 'Números da conta', wide: true, footer: '<button class="btn btn-primary" onclick="closeModal();painel()">Fechar</button>' });
+  } catch (e) { toast(e.message, 'err'); }
+};
+window.setSegmento = async (acc, num, seg) => {
+  if (!confirm('Trocar o segmento deste número? Cadastros do segmento anterior ficam guardados, mas as telas e a IA mudam.')) return;
+  try { await adm('/accounts/' + acc + '/numeros/' + num, { method: 'PATCH', body: { segmento: seg || null } }); toast('Segmento atualizado', 'ok'); } catch (e) { toast(e.message, 'err'); }
 };
 window.resetSenha = async (id) => {
   if (!confirm('Gerar nova senha? A senha atual para de funcionar.')) return;

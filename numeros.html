@@ -1,0 +1,71 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><title>Números — IA ZAP</title></head><body>
+<script>
+if (!requireAuth()) throw new Error('auth');
+let lista = [], limite = 1, me;
+(async () => {
+  me = await loadMe({ skipOnboarding: true });
+  renderShell('numeros', { title: 'Números' });
+  q('topbar-actions').innerHTML = '<button class="btn btn-primary" id="add">' + icon('plus', 16) + ' Adicionar número</button>';
+  q('add').onclick = novo;
+  q('content').innerHTML = `<div class="page" style="max-width:1000px">
+    <p class="muted" style="margin:0 0 14px">Cada número funciona separado: tem o próprio segmento, dados da empresa, cadastros, conversas e IA. Use um número por negócio ou por cliente que você atende.</p>
+    <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Número</th><th>Segmento</th><th>WhatsApp</th><th>IA</th><th>Contatos</th><th></th></tr></thead><tbody id="tb"><tr><td colspan="6"><div class="spinner"></div></td></tr></tbody></table></div>
+    <p class="small soft" id="lim"></p>
+  </div>`;
+  carregar();
+})();
+
+async function carregar() {
+  try {
+    const r = await api('/api/numeros'); lista = r.numeros; limite = r.limite;
+    q('lim').textContent = 'Seu plano: ' + lista.length + ' de ' + limite + ' número(s) em uso.';
+    q('add').disabled = lista.length >= limite;
+    q('tb').innerHTML = lista.map(n => `<tr>
+      <td><div style="font-weight:600;color:var(--ink)">${escapeHtml(n.nome)}${n.id === IZ.num() ? ' <span class="pill pill-ok">Aberto</span>' : ''}</div><div class="small soft">${escapeHtml(n.nome_empresa || '')}</div></td>
+      <td>${n.segmento ? escapeHtml(MODELOS[n.segmento]?.nome || n.segmento) : '<span class="pill pill-warn">Não definido</span>'}</td>
+      <td>${n.status === 'open' ? '<span class="pill pill-ok">' + (n.numero ? fmtPhone(n.numero) : 'Conectado') + '</span>' : n.tem_whatsapp ? '<span class="pill pill-warn">Desconectado</span>' : '<span class="pill">Não conectado</span>'}</td>
+      <td>${n.ia_ativa ? '<span class="pill pill-ok">Ligada</span>' : '<span class="pill">Desligada</span>'}</td>
+      <td>${n.contatos}${n.nao_lidas ? ' <span class="sb-badge" style="margin-left:4px">' + n.nao_lidas + '</span>' : ''}</td>
+      <td style="text-align:right;white-space:nowrap">
+        ${n.id === IZ.num() ? '' : '<button class="btn btn-sm btn-primary" onclick="trocarNumero(\'' + n.id + '\')">Abrir</button>'}
+        <button class="btn btn-sm" onclick="renomear('${n.id}')">Renomear</button>
+        <button class="btn btn-sm btn-danger" onclick="excluir('${n.id}')" ${lista.length === 1 ? 'disabled title="A conta precisa de pelo menos um número"' : ''}>Excluir</button>
+      </td></tr>`).join('');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+function novo() {
+  if (lista.length >= limite) return toast('Limite do plano atingido. Fale com o suporte para contratar mais números.', 'err');
+  openModal('<div class="field"><label for="nn">Nome do número</label><input class="input" id="nn" placeholder="Ex.: Barbearia do João, Clínica Centro"><div class="hint">Só para você identificar no painel. Depois você escolhe o segmento e conecta o WhatsApp.</div></div>',
+    { title: 'Adicionar número', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="nn-go">Criar e configurar</button>' });
+  q('nn-go').onclick = async (ev) => {
+    btnLoading(ev.currentTarget, true, 'Criando…');
+    try { const r = await api('/api/numeros', { method: 'POST', body: { nome: q('nn').value } }); IZ.setNum(r.id); location.href = 'onboarding.html'; }
+    catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
+  };
+}
+window.renomear = (id) => {
+  const n = lista.find(x => x.id === id);
+  openModal('<div class="field"><label for="rn">Nome do número</label><input class="input" id="rn" value="' + escapeHtml(n.nome) + '"></div>',
+    { title: 'Renomear número', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="rn-go">Salvar nome</button>' });
+  q('rn-go').onclick = async () => {
+    try { await api('/api/numeros/' + id, { method: 'PATCH', body: { nome: q('rn').value } }); closeModal(); toast('Nome salvo', 'ok'); sessionStorage.removeItem('iz_me'); carregar(); }
+    catch (e) { toast(e.message, 'err'); }
+  };
+};
+window.excluir = (id) => {
+  const n = lista.find(x => x.id === id);
+  openModal(`<div class="notice notice-err">Isso apaga <b>tudo</b> deste número: conversas, contatos, agenda, serviços, equipe e configurações. O WhatsApp é desconectado. Não dá para desfazer.</div>
+    <div class="field"><label for="ex">Para confirmar, digite o nome do número: <b>${escapeHtml(n.nome)}</b></label><input class="input" id="ex" autocomplete="off"></div>`,
+    { title: 'Excluir número', footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" id="ex-go">Excluir número</button>' });
+  q('ex-go').onclick = async (ev) => {
+    btnLoading(ev.currentTarget, true, 'Excluindo…');
+    try {
+      await api('/api/numeros/' + id, { method: 'DELETE', body: { confirmar: q('ex').value } });
+      if (IZ.num() === id) IZ.setNum('');
+      closeModal(); toast('Número excluído', 'ok'); sessionStorage.removeItem('iz_me'); location.reload();
+    } catch (e) { toast(e.message, 'err'); btnLoading(ev.currentTarget, false); }
+  };
+};
+</script>
+</body></html>

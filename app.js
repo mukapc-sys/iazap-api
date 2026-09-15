@@ -6,7 +6,9 @@
 const IZ = {
   token() { return localStorage.getItem('iz_token') || ''; },
   save(t) { localStorage.setItem('iz_token', t); },
-  clear() { localStorage.removeItem('iz_token'); sessionStorage.removeItem('iz_me'); },
+  clear() { localStorage.removeItem('iz_token'); localStorage.removeItem('iz_num'); sessionStorage.removeItem('iz_me'); },
+  num() { return localStorage.getItem('iz_num') || ''; },
+  setNum(id) { if (id) localStorage.setItem('iz_num', id); else localStorage.removeItem('iz_num'); sessionStorage.removeItem('iz_me'); },
   meCache() { try { return JSON.parse(sessionStorage.getItem('iz_me') || 'null'); } catch { return null; } },
 };
 
@@ -18,6 +20,7 @@ function requireAuth() {
 async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   if (IZ.token() && !opts.noAuth) headers.Authorization = 'Bearer ' + IZ.token();
+  if (IZ.num() && !opts.noAuth) headers['X-Numero'] = IZ.num();
   const init = { method: opts.method || 'GET', headers };
   if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
   let r;
@@ -42,6 +45,7 @@ async function api(path, opts = {}) {
 // Carrega /me e manda para o onboarding se a configuração inicial não terminou.
 async function loadMe({ skipOnboarding = false } = {}) {
   const me = await api('/api/auth/me');
+  if (me.numero && me.numero.id !== IZ.num()) localStorage.setItem('iz_num', me.numero.id);
   sessionStorage.setItem('iz_me', JSON.stringify(me));
   if (!skipOnboarding && (!me.account.modelo || !me.account.onboarding_ok)) {
     location.href = 'onboarding.html';
@@ -59,6 +63,8 @@ const I = {
   scissors: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.5 7.5 20 19M8.5 16.5 20 5"/>',
   bag: '<path d="M5 8h14l-1 13H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
   bike: '<circle cx="5.5" cy="17" r="3.5"/><circle cx="18.5" cy="17" r="3.5"/><path d="M5.5 17 9 9h6l3.5 8M9 9 7.5 5.5H5M15 9l-3 8"/>',
+  swap: '<path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
   store: '<path d="M3 9 4.5 4h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 11v10h14V11"/>',
   box: '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
   building: '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1M10 21v-3h4v3"/>',
@@ -130,12 +136,30 @@ function renderShell(activeKey, opts = {}) {
     <div class="sb-section">Configuração</div>
     ${item({ key: 'whatsapp', label: 'WhatsApp', icon: 'phone', href: 'whatsapp.html' }, `<span class="wa-dot ${me.setup.whatsapp ? 'on' : ''}" style="margin-left:auto;margin-right:0"></span>`)}
     ${item({ key: 'ia', label: 'Inteligência artificial', icon: 'spark', href: 'ia.html' })}
+    ${item({ key: 'numeros', label: 'Números', icon: 'swap', href: 'numeros.html' })}
   `;
+  const nAtual = me.numero || {};
+  const seletor = `
+    <div class="num-sel">
+      <button class="num-btn" id="num-btn" aria-haspopup="true" aria-expanded="false">
+        <span class="wa-dot ${nAtual.status === 'open' ? 'on' : ''}"></span>
+        <span class="num-txt"><b>${escapeHtml(nAtual.nome || 'Sem número')}</b><small>${escapeHtml(MODELOS[nAtual.segmento]?.nome || 'Segmento não definido')}</small></span>
+        ${icon('swap', 16)}
+      </button>
+      <div class="num-menu hidden" id="num-menu" role="menu">
+        ${(me.numeros || []).map(n => `<button role="menuitem" class="num-opt ${n.id === nAtual.id ? 'on' : ''}" onclick="trocarNumero('${n.id}')">
+          <span class="wa-dot ${n.status === 'open' ? 'on' : ''}"></span>
+          <span class="num-txt"><b>${escapeHtml(n.nome)}</b><small>${escapeHtml(MODELOS[n.segmento]?.nome || 'Segmento não definido')}${n.numero ? ' · ' + fmtPhone(n.numero) : ''}</small></span>
+        </button>`).join('')}
+        <a class="num-opt num-manage" href="numeros.html">${icon('plus', 16)}<span>Adicionar ou gerenciar números</span></a>
+      </div>
+    </div>`;
 
   document.body.innerHTML = `
     <div class="shell">
       <aside class="sidebar" id="sidebar">
         <div class="sb-brand">${logoHTML()}</div>
+        ${seletor}
         <nav class="sb-nav">${nav}</nav>
         <div class="sb-user">
           <div class="sb-user-name">${escapeHtml(me.account.nome || '')}</div>
@@ -159,6 +183,11 @@ function renderShell(activeKey, opts = {}) {
     </div>
     <div id="toast"></div>`;
   document.title = `${opts.title ? opts.title + ' — ' : ''}IA ZAP`;
+  const nb = q('num-btn'), nm = q('num-menu');
+  if (nb) {
+    nb.onclick = (e) => { e.stopPropagation(); const abrir = nm.classList.contains('hidden'); nm.classList.toggle('hidden', !abrir); nb.setAttribute('aria-expanded', abrir); };
+    document.addEventListener('click', () => { nm.classList.add('hidden'); nb.setAttribute('aria-expanded', 'false'); });
+  }
   atualizarBadge();
 }
 
@@ -168,6 +197,11 @@ async function atualizarBadge() {
     const el = q('sb-unread');
     if (el) { el.textContent = s.nao_lidas; el.classList.toggle('hidden', !s.nao_lidas); }
   } catch { }
+}
+
+function trocarNumero(id) {
+  IZ.setNum(id);
+  location.href = 'inicio.html';
 }
 
 async function logout() {
@@ -272,7 +306,7 @@ async function uploadArquivo(file, destino, { maxLado } = {}) {
   }
   let r;
   try {
-    r = await fetch(window.API + '/api/media?destino=' + destino, { method: 'POST', headers: { Authorization: 'Bearer ' + IZ.token(), 'Content-Type': tipo, 'X-File-Name': encodeURIComponent(nome) }, body: blob });
+    r = await fetch(window.API + '/api/media?destino=' + destino, { method: 'POST', headers: { Authorization: 'Bearer ' + IZ.token(), 'X-Numero': IZ.num(), 'Content-Type': tipo, 'X-File-Name': encodeURIComponent(nome) }, body: blob });
   } catch { throw new Error('Sem conexão com o servidor. Verifique sua internet.'); }
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(cap(d.error || 'Falha ao enviar arquivo'));
@@ -409,7 +443,7 @@ function mountWhatsapp(el, { onConnected } = {}) {
       btnLoading(ev.currentTarget, false);
     };
     q('wa-out').onclick = async () => {
-      if (!confirm('Desconectar este WhatsApp? O atendimento automático para até conectar de novo.')) return;
+      if (!confirm('Desconectar este WhatsApp? Conversas e cadastros deste número continuam guardados. O atendimento para até conectar de novo.')) return;
       try { await api('/api/instance', { method: 'DELETE' }); toast('WhatsApp desconectado', 'ok'); load(); } catch (e) { toast(e.message, 'err'); }
     };
   }

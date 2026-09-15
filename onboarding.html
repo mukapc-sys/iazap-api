@@ -1,6 +1,6 @@
 <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14A152"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2.5C8.5 2.5 2.5 8.3 2.5 15.5c0 2.6.8 5 2.1 7L3 28.5l6.3-1.6A13.7 13.7 0 0 0 16 28.5c7.5 0 13.5-5.8 13.5-13S23.5 2.5 16 2.5z%22 fill=%22%2314A152%22/%3E%3C/svg%3E"><link rel="stylesheet" href="app.css"><script src="config.js"></script><script src="app.js"></script><script src="empresa-form.js"></script><title>Configuração inicial — IA ZAP</title></head><body>
 <div class="ob">
-  <div class="ob-top"><div id="logo"></div><button class="btn btn-ghost btn-sm" onclick="logout()">Sair</button></div>
+  <div class="ob-top"><div id="logo"></div><div style="display:flex;gap:8px;align-items:center"><span class="small muted" id="ob-num"></span><a class="btn btn-ghost btn-sm hidden" id="ob-outros" href="numeros.html">Meus números</a><button class="btn btn-ghost btn-sm" onclick="logout()">Sair</button></div></div>
   <div class="ob-main"><div class="ob-inner">
     <div class="ob-progress" id="prog"></div>
     <div id="step"></div>
@@ -18,6 +18,8 @@ const TOTAL = 4;
   try { me = await loadMe({ skipOnboarding: true }); }
   catch (e) { q('step').innerHTML = '<div class="notice notice-err">' + escapeHtml(e.message) + '</div>'; return; }
   if (me.account.onboarding_ok && me.account.modelo) return location.replace('inicio.html');
+  if (me.numero) q('ob-num').textContent = 'Configurando: ' + me.numero.nome;
+  if ((me.numeros || []).length > 1) q('ob-outros').classList.remove('hidden');
   etapa = me.account.modelo ? 2 : 1;
   render();
 })();
@@ -35,8 +37,8 @@ function render() {
 function passoModelo() {
   q('step').innerHTML = `
     <div class="ob-step">Passo 1 de ${TOTAL}</div>
-    <h1>Qual é o seu tipo de negócio?</h1>
-    <p class="lead">Isso define como a IA atende e quais telas você vai usar. Depois de escolher, a troca só pode ser feita pelo suporte.</p>
+    <h1>Qual é o segmento deste número?</h1>
+    <p class="lead">Isso define como a IA atende e quais telas este número usa. Cada número tem o seu segmento. Depois de escolher, a troca só pode ser feita pelo suporte.</p>
     <div class="models">${Object.entries(MODELOS).map(([k, m]) => `
       <button type="button" class="model ${escolhido === k ? 'on' : ''}" onclick="escolher('${k}')" aria-pressed="${escolhido === k}">
         <div class="model-ic">${icon(m.icon, 24)}</div>
@@ -61,7 +63,7 @@ window.escolher = (k) => { escolhido = k; passoModelo(); };
 function passoEmpresa() {
   q('step').innerHTML = `
     <div class="ob-step">Passo 2 de ${TOTAL}</div>
-    <h1>Conte sobre a sua empresa</h1>
+    <h1>Conte sobre a empresa deste número</h1>
     <p class="lead">A IA responde com base nessas informações. Você completa o restante (perguntas frequentes, regras, jeito de falar) depois, em Dados da empresa.</p>
     <div class="panel"><div class="panel-body" id="biz"></div></div>
     <div class="ob-actions"><span class="small soft">Modelo: ${escapeHtml(MODELOS[me.account.modelo].nome)}</span><button class="btn btn-primary btn-lg" id="go">Salvar e continuar</button></div>`;
@@ -77,7 +79,7 @@ function passoIA() {
   q('step').innerHTML = `
     <div class="ob-step">Passo 3 de ${TOTAL}</div>
     <h1>Conecte a inteligência artificial</h1>
-    <p class="lead">O IA ZAP usa o Gemini, do Google. Cada empresa usa a própria chave, gerada gratuitamente em poucos minutos.</p>
+    <p class="lead">O IA ZAP usa o Gemini, do Google. A chave vale para todos os números da sua conta: se já cadastrou, é só continuar.</p>
     <div class="panel" id="ai"></div>
     <div class="ob-actions"><button class="btn btn-ghost" onclick="etapa=2;render()">${icon('back',16)} Voltar</button>
       <div style="display:flex;gap:8px"><button class="btn" onclick="etapa=4;render()">Fazer depois</button><button class="btn btn-primary btn-lg" id="go">Continuar</button></div></div>`;
@@ -92,8 +94,8 @@ function passoIA() {
 function passoWhats() {
   q('step').innerHTML = `
     <div class="ob-step">Passo 4 de ${TOTAL}</div>
-    <h1>Conecte o WhatsApp da empresa</h1>
-    <p class="lead">As conversas desse número passam a aparecer no IA ZAP.</p>
+    <h1>Conecte o WhatsApp deste número</h1>
+    <p class="lead">Use o celular do negócio que este número vai atender. As conversas passam a aparecer no IA ZAP.</p>
     <div class="panel" id="wa"></div>
     <div class="ob-actions"><button class="btn btn-ghost" onclick="etapa=3;render()">${icon('back',16)} Voltar</button>
       <div style="display:flex;gap:8px"><button class="btn" id="later">Conectar depois</button><button class="btn btn-primary btn-lg" id="go">Concluir</button></div></div>`;

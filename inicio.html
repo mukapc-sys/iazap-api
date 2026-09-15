@@ -6,7 +6,7 @@ if (!requireAuth()) throw new Error('auth');
   renderShell('inicio', { title: 'Início' });
   const s = me.setup, mod = MODELOS[me.account.modelo];
   const itens = [
-    { ok: s.modelo, t: 'Tipo de negócio', d: mod ? mod.nome : 'Não definido', href: null },
+    { ok: s.modelo, t: 'Segmento do número', d: mod ? mod.nome : 'Não definido', href: null },
     { ok: s.empresa, t: 'Dados da empresa', d: s.empresa ? 'Preenchido. Complete perguntas frequentes e regras para respostas melhores.' : 'Falta descrever a empresa', href: 'empresa.html' },
     ...(me.account.modelo === 'agenda' ? [{ ok: s.servicos > 0 && s.profissionais > 0, t: 'Serviços e equipe', d: (s.servicos || 0) + ' serviço(s) · ' + (s.profissionais || 0) + ' profissional(is)', href: 'servicos.html' }] : []),
     { ok: s.ia_chave, t: 'Chave do Gemini', d: s.ia_chave ? 'Chave válida' : 'Cadastre para a IA poder responder', href: 'ia.html' },

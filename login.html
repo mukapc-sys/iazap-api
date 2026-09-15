@@ -19,7 +19,7 @@ q('f').onsubmit = async (e) => {
   const b = q('l-go'); btnLoading(b, true, 'Entrando…');
   try {
     const r = await api('/api/auth/login', { method: 'POST', noAuth: true, body: { email: q('l-email').value, senha: q('l-senha').value } });
-    IZ.save(r.token);
+    IZ.save(r.token); IZ.setNum('');
     const me = await api('/api/auth/me');
     sessionStorage.setItem('iz_me', JSON.stringify(me));
     location.href = (!me.account.modelo || !me.account.onboarding_ok) ? 'onboarding.html' : 'inicio.html';
