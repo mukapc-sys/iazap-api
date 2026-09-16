@@ -25,7 +25,7 @@ const EXTRAS = {
     { k: 'obs_agendamento', l: 'O que o cliente precisa saber antes de vir', t: 'textarea', ph: 'Ex.: chegar 5 min antes; estacionamento na rua lateral.' },
     { k: 'oferecer_lembrete', l: 'A IA oferece lembrete depois de marcar?', t: 'select', op: ['Sim', 'Não'] },
     { k: 'lembrete_padrao_min', l: 'Antecedência sugerida pela IA', t: 'select', op: ['30', '15', '60', '120', '180', '1440'], rot: { '15': '15 minutos antes', '30': '30 minutos antes', '60': '1 hora antes', '120': '2 horas antes', '180': '3 horas antes', '1440': '1 dia antes' } },
-    { k: 'lembrete_texto', l: 'Texto do lembrete', t: 'textarea', ph: 'Oi, {nome}! Passando para lembrar do seu horário: {servico} com {profissional}, {quando} às {hora}. Até lá!', hint: 'Use {nome}, {servico}, {profissional}, {quando} (hoje, amanhã ou o dia), {data}, {hora} e {empresa}. Em branco, usa o texto de exemplo.' },
+    { k: 'lembrete_texto', l: 'Texto do lembrete', t: 'textarea', ph: 'Oi, {nome}! Passando para lembrar do seu horário: {servico} com {profissional}, {quando} às {hora}. Até lá!', hint: 'Use {nome}, {servico}, {profissional}, {quando} (hoje, amanhã ou o dia), {data}, {hora}, {empresa} e {orientacoes} (o que o cliente precisa saber antes de vir). Em branco, usa o texto de exemplo com as orientações.' },
   ],
   delivery: [
     { k: 'taxa_entrega', l: 'Taxa de entrega (R$)', t: 'text', ph: '6,00' },
