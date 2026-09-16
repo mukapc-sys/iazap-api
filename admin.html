@@ -20,7 +20,7 @@ async function painel() {
     <header class="topbar">${logoHTML()}<div class="topbar-actions"><a class="btn" href="admin-vendas.html">Vendas, suporte e configurações</a><button class="btn btn-primary" onclick="nova()">Criar conta</button><button class="btn btn-ghost" onclick="AK.clear();entrar()">Sair</button></div></header>
     <main class="content"><div class="metrics" id="mt"></div>
       <div style="margin-bottom:12px"><input class="input" id="fq" placeholder="Buscar empresa ou email" style="max-width:340px"></div>
-      <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Empresa</th><th>Dono</th><th>Números</th><th>Segmentos</th><th>Gemini</th><th>Contatos</th><th>Status</th><th>Criada</th><th></th></tr></thead>
+      <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Empresa</th><th>Dono</th><th>Números</th><th>Segmentos</th><th>Modelo da IA</th><th>Contatos</th><th>Status</th><th>Criada</th><th></th></tr></thead>
       <tbody id="tb"><tr><td colspan="9"><div class="spinner"></div></td></tr></tbody></table></div></main></div>`;
   q('fq').oninput = render;
   try { contas = (await adm('/accounts')).accounts; render(); }
@@ -37,7 +37,7 @@ function render() {
     <td>${escapeHtml(c.dono || '')}<div class="small soft">${escapeHtml(c.email || '')}</div></td>
     <td style="white-space:nowrap">${c.numeros} de <input type="number" min="1" max="100" value="${c.max_numeros}" class="input" style="width:62px;padding:3px 6px;display:inline-block" onchange="setLimite('${c.id}', this.value)"><div class="small soft">${c.conectados} conectado(s)</div></td>
     <td class="small"><button class="btn btn-sm btn-ghost" onclick="verNumeros('${c.id}')">${escapeHtml(c.segmentos || '—')}</button></td>
-    <td>${c.key_status === 'ok' ? '<span class="pill pill-ok">ok</span>' : '<span class="pill">' + escapeHtml(c.key_status || 'sem') + '</span>'}</td>
+    <td class="small"><a href="admin-vendas.html?aba=ia">ver consumo</a></td>
     <td>${c.contatos}</td>
     <td>${c.status === 'ativo' ? '<span class="pill pill-ok">Ativa</span>' : '<span class="pill pill-err">Bloqueada</span>'}</td>
     <td class="small">${fmtDate(c.criado_em)}</td>

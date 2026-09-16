@@ -9,8 +9,8 @@ let aba = new URLSearchParams(location.search).get('aba') || 'assinaturas';
 q('root').innerHTML = `<header class="topbar">${logoHTML()}<div class="topbar-actions"><a class="btn btn-ghost" href="admin.html">Voltar para contas</a></div></header>
   <div class="page" style="max-width:1150px"><div class="tabs2" id="tabs"></div><div id="area"><div class="spinner"></div></div></div>`;
 function abrir(a) { aba = a; history.replaceState(null, '', '?aba=' + a);
-  q('tabs').innerHTML = [['assinaturas', 'Assinaturas'], ['planos', 'Planos (Hotmart)'], ['suporte', 'Suporte'], ['config', 'Configurações']].map(([k, l]) => '<button class="' + (k === a ? 'on' : '') + '" onclick="abrir(\'' + k + '\')">' + l + '</button>').join('');
-  ({ assinaturas, planos, suporte, config })[a]().catch(e => q('area').innerHTML = '<div class="notice notice-err">' + escapeHtml(e.message) + '</div>'); }
+  q('tabs').innerHTML = [['assinaturas', 'Assinaturas'], ['ia', 'IA e consumo'], ['planos', 'Planos (Hotmart)'], ['suporte', 'Suporte'], ['config', 'Configurações']].map(([k, l]) => '<button class="' + (k === a ? 'on' : '') + '" onclick="abrir(\'' + k + '\')">' + l + '</button>').join('');
+  ({ assinaturas, ia, planos, suporte, config })[a]().catch(e => q('area').innerHTML = '<div class="notice notice-err">' + escapeHtml(e.message) + '</div>'); }
 window.abrir = abrir; abrir(aba);
 
 async function assinaturas() {
@@ -25,6 +25,45 @@ async function assinaturas() {
     ${r.logs.map(l => '<tr><td class="small">' + fmtDate(l.criado_em) + '</td><td class="small"><code>' + escapeHtml(l.evento) + '</code></td><td class="small">' + escapeHtml(l.email || '') + '</td><td class="small">' + escapeHtml(l.produto || '') + (l.oferta ? ' / ' + escapeHtml(l.oferta) : '') + '</td><td class="small">' + escapeHtml(l.resultado || '') + '</td></tr>').join('') || '<tr><td colspan="5"><div class="empty">Nenhum evento</div></td></tr>'}</tbody></table></div>`;
 }
 window.reenviar = async (id) => { try { const r = await adm('/assinaturas/' + id + '/reenviar-acesso', { method: 'POST' }); openModal('<p>E-mail: <b>' + (r.email ? 'enviado' : 'não enviado') + '</b> · WhatsApp: <b>' + (r.whats ? 'enviado' : 'não enviado') + '</b></p><input class="input" readonly value="' + escapeHtml(r.link) + '">', { title: 'Link de acesso', footer: '<button class="btn btn-primary" onclick="closeModal()">Fechar</button>' }); } catch (e) { toast(e.message, 'err'); } };
+
+const BRL = (v) => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
+const NUM = (v) => (v || 0).toLocaleString('pt-BR');
+async function ia() {
+  const r = await adm('/ia');
+  const opcoes = (sel, comPadrao) => (comPadrao ? '<option value="">Padrão (' + escapeHtml(r.modelo_padrao) + ')</option>' : '') + r.modelos.map(m => '<option value="' + escapeHtml(m.id) + '" ' + (m.id === sel ? 'selected' : '') + '>' + escapeHtml(m.id) + '</option>').join('') + (sel && !r.modelos.some(m => m.id === sel) ? '<option selected>' + escapeHtml(sel) + '</option>' : '');
+  q('area').innerHTML = `
+    ${r.chave_configurada ? '' : '<div class="notice notice-err">A chave da plataforma não está configurada. No Worker: Settings → Variables and Secrets → adicione o secret <code>GEMINI_KEY</code> com a chave do Google AI Studio.</div>'}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+      ${[['Custo estimado no mês', BRL(r.total_mes)], ['Projeção para 30 dias', BRL(r.projecao_mes)], ['Respostas da IA no mês', NUM(r.respostas_mes)], ['Custo médio por resposta', r.respostas_mes ? BRL(r.total_mes / r.respostas_mes) : '—']].map(([l, v]) => '<div class="panel" style="padding:14px;margin:0"><div class="small soft">' + l + '</div><div style="font-size:24px;font-weight:700;color:var(--ink)">' + v + '</div></div>').join('')}
+    </div>
+    <div class="panel"><div class="panel-head"><div><h3>Modelo padrão</h3><p>Usado por todas as contas que não têm um modelo definido abaixo. Contas novas nascem nele.</p></div></div>
+      <div class="panel-body" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><select class="select" id="mp" style="max-width:320px">${opcoes(r.modelo_padrao, false)}</select><button class="btn btn-primary" id="mpgo">Salvar padrão</button>
+      <button class="btn btn-ghost" id="prgo">Preços e câmbio</button></div></div>
+    <div class="panel" style="overflow-x:auto"><table class="tbl"><thead><tr><th>Conta</th><th>Modelo</th><th style="text-align:right">Respostas no mês</th><th style="text-align:right">Tokens (entrada / saída)</th><th style="text-align:right">Custo no mês</th><th style="text-align:right">Por resposta</th><th style="text-align:right">Mês anterior</th></tr></thead><tbody>
+      ${r.contas.map(c => `<tr>
+        <td><b style="color:var(--ink)">${escapeHtml(c.nome)}</b>${c.status !== 'ativo' ? ' <span class="pill">' + escapeHtml(c.status) + '</span>' : ''}
+          ${c.numeros.length ? '<div class="small soft">' + c.numeros.map(n => escapeHtml(n.nome) + ': ' + NUM(n.respostas) + ' · ' + BRL(n.custo)).join(' · ') + '</div>' : ''}</td>
+        <td><select class="select" style="padding:5px 8px;min-width:220px" onchange="mudaModelo('${c.id}', this.value)">${opcoes(c.modelo_admin || '', true)}</select></td>
+        <td style="text-align:right">${NUM(c.mes.respostas)}</td>
+        <td style="text-align:right" class="small">${NUM(c.mes.tokens_in)} / ${NUM(c.mes.tokens_out)}</td>
+        <td style="text-align:right;font-weight:700;color:${c.mes.custo > 40 ? 'var(--danger)' : 'var(--ink)'}">${BRL(c.mes.custo)}</td>
+        <td style="text-align:right" class="small">${c.mes.respostas ? BRL(c.custo_por_resposta) : '—'}</td>
+        <td style="text-align:right" class="small">${BRL(c.mes_anterior.custo)}</td></tr>`).join('') || '<tr><td colspan="7"><div class="empty">Nenhuma conta</div></td></tr>'}
+    </tbody></table></div>
+    <p class="small soft">Custos estimados pelos tokens registrados em cada chamada (respostas, memória, textos automáticos, PDFs e sala de teste), com os preços e o câmbio configurados. A fatura oficial é a do Google. Em vermelho: contas acima de R$ 40 no mês.</p>`;
+  q('mpgo').onclick = async () => { try { await adm('/ia', { method: 'PUT', body: { modelo_padrao: q('mp').value } }); toast('Modelo padrão salvo', 'ok'); ia(); } catch (e) { toast(e.message, 'err'); } };
+  q('prgo').onclick = () => {
+    const linhas = Object.entries(r.precos).map(([k, v]) => '<tr><td><input class="input pr-k" value="' + escapeHtml(k) + '"></td><td><input class="input pr-i" value="' + v.in + '"></td><td><input class="input pr-o" value="' + v.out + '"></td><td><input class="input pr-c" value="' + v.cache + '"></td></tr>').join('');
+    openModal('<p class="small soft" style="margin-top:0">Dólares por 1 milhão de tokens. O modelo é identificado pelo começo do nome; "*" vale para os não listados. Tokens de raciocínio contam como saída.</p><div class="field" style="max-width:200px"><label for="cb">Câmbio (R$ por US$)</label><input class="input" id="cb" value="' + r.cambio + '"></div><table class="tbl"><thead><tr><th>Modelo</th><th>Entrada</th><th>Saída</th><th>Cache</th></tr></thead><tbody id="prt">' + linhas + '<tr><td><input class="input pr-k" placeholder="novo modelo"></td><td><input class="input pr-i"></td><td><input class="input pr-o"></td><td><input class="input pr-c"></td></tr></tbody></table>',
+      { title: 'Preços dos modelos', wide: true, footer: '<button class="btn" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="prs">Salvar</button>' });
+    q('prs').onclick = async () => {
+      const precos = {}; const ks = [...document.querySelectorAll('.pr-k')], is = [...document.querySelectorAll('.pr-i')], os = [...document.querySelectorAll('.pr-o')], cs = [...document.querySelectorAll('.pr-c')];
+      ks.forEach((k, i) => { const n = k.value.trim(); if (n) precos[n] = { in: parseFloat(String(is[i].value).replace(',', '.')) || 0, out: parseFloat(String(os[i].value).replace(',', '.')) || 0, cache: parseFloat(String(cs[i].value).replace(',', '.')) || 0 }; });
+      try { await adm('/ia', { method: 'PUT', body: { precos, cambio: parseFloat(String(q('cb').value).replace(',', '.')) } }); closeModal(); toast('Preços salvos', 'ok'); ia(); } catch (e) { toast(e.message, 'err'); }
+    };
+  };
+}
+window.mudaModelo = async (id, modelo) => { try { await adm('/ia/contas/' + id, { method: 'PATCH', body: { modelo } }); toast(modelo ? 'Conta passa a usar ' + modelo : 'Conta volta ao modelo padrão', 'ok'); } catch (e) { toast(e.message, 'err'); } };
 
 async function planos() {
   const r = await adm('/planos');

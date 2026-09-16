@@ -22,10 +22,9 @@ let me;
     <div class="panel"><div class="panel-head"><div><h3>Sala de teste</h3><p>Uma página que simula o WhatsApp para testar a IA deste número sem usar o celular. Dá para mandar o link para um cliente ou prospect experimentar.</p></div>
       <label class="switch"><input type="checkbox" id="sl-on"><span></span></label></div>
       <div class="panel-body" id="sl"></div></div>
-    <div class="panel"><div class="panel-head"><div><h3>Chave do Gemini</h3><p>A IA usa a chave da sua conta Google para gerar as respostas.</p></div></div><div id="ai"></div></div>
+    <div class="panel"><div class="panel-head"><div><h3>Inteligência artificial inclusa</h3><p>O IA ZAP usa o Google Gemini, já incluso na sua assinatura. Não é preciso cadastrar chave nem pagar nada à parte: é só ligar o atendimento.</p></div><span class="pill pill-ok" id="ai-st">Ativa</span></div></div>
     <div class="panel"><div class="panel-head"><div><h3>Últimos atendimentos</h3><p>O que a IA respondeu e o que fez em cada conversa.</p></div><button class="btn btn-sm" onclick="logs()">Atualizar</button></div><div id="lg"></div></div>
   </div>`;
-  mountAiKey(q('ai'), { onSaved: estado });
   q('ia-on').onchange = async (e) => {
     try { await api('/api/ai', { method: 'PATCH', body: { ia_ativa: e.target.checked } }); toast(e.target.checked ? 'Atendimento automático ligado' : 'Atendimento automático desligado', 'ok'); estado(); }
     catch (err) { e.target.checked = !e.target.checked; toast(err.message, 'err'); }
@@ -41,10 +40,11 @@ async function estado() {
   try {
     const [ai, m] = [(await api('/api/ai')).ai, await api('/api/auth/me')];
     q('ia-on').checked = ai.ia_ativa;
+    if (q('ai-st')) { q('ai-st').textContent = ai.disponivel ? 'Inclusa' : 'Indisponível no momento'; q('ai-st').className = 'pill ' + (ai.disponivel ? 'pill-ok' : 'pill-err'); }
     const s = m.setup;
     const itens = [
       [s.whatsapp, 'WhatsApp conectado', 'whatsapp.html'],
-      [s.ia_chave, 'Chave do Gemini válida', null],
+      [s.ia_chave, 'Inteligência artificial disponível', null],
       [s.empresa, 'Dados da empresa preenchidos', 'empresa.html'],
       ...(['agenda', 'imobiliaria'].includes(m.account.modelo) ? [[s.servicos > 0 && s.profissionais > 0, 'Serviços e profissionais cadastrados', 'servicos.html']] : []),
       [ai.ia_ativa, 'Atendimento automático ligado', null],

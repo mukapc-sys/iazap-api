@@ -12,7 +12,7 @@ if (!requireAuth()) throw new Error('auth');
 q('logo').innerHTML = logoHTML();
 
 let me = null, etapa = 1, escolhido = null, wa = null, form = null;
-const TOTAL = 4;
+const TOTAL = 3;
 
 (async () => {
   try { me = await loadMe({ skipOnboarding: true }); }
@@ -31,7 +31,7 @@ function render() {
   if (wa) { wa.stop(); wa = null; }
   progress();
   window.scrollTo(0, 0);
-  ({ 1: passoModelo, 2: passoEmpresa, 3: passoIA, 4: passoWhats })[etapa]();
+  ({ 1: passoModelo, 2: passoEmpresa, 3: passoWhats })[etapa]();
 }
 
 let presets = null, presetEscolhido = null;
@@ -79,29 +79,13 @@ function passoEmpresa() {
   };
 }
 
-function passoIA() {
-  q('step').innerHTML = `
-    <div class="ob-step">Passo 3 de ${TOTAL}</div>
-    <h1>Conecte a inteligência artificial</h1>
-    <p class="lead">O IA ZAP usa o Gemini, do Google. A chave vale para todos os números da sua conta: se já cadastrou, é só continuar.</p>
-    <div class="panel" id="ai"></div>
-    <div class="ob-actions"><button class="btn btn-ghost" onclick="etapa=2;render()">${icon('back',16)} Voltar</button>
-      <div style="display:flex;gap:8px"><button class="btn" onclick="etapa=4;render()">Fazer depois</button><button class="btn btn-primary btn-lg" id="go">Continuar</button></div></div>`;
-  mountAiKey(q('ai'));
-  q('go').onclick = async () => {
-    const ai = (await api('/api/ai')).ai;
-    if (ai.status !== 'ok') return toast('Valide a chave ou clique em Fazer depois', 'err');
-    etapa = 4; render();
-  };
-}
-
 function passoWhats() {
   q('step').innerHTML = `
-    <div class="ob-step">Passo 4 de ${TOTAL}</div>
+    <div class="ob-step">Passo 3 de ${TOTAL}</div>
     <h1>Conecte o WhatsApp deste número</h1>
-    <p class="lead">Use o celular do negócio que este número vai atender. As conversas passam a aparecer no IA ZAP.</p>
+    <p class="lead">Use o celular do negócio que este número vai atender. A inteligência artificial do Google já vem inclusa: depois de conectar, é só ligar o atendimento.</p>
     <div class="panel" id="wa"></div>
-    <div class="ob-actions"><button class="btn btn-ghost" onclick="etapa=3;render()">${icon('back',16)} Voltar</button>
+    <div class="ob-actions"><button class="btn btn-ghost" onclick="etapa=2;render()">${icon('back',16)} Voltar</button>
       <div style="display:flex;gap:8px"><button class="btn" id="later">Conectar depois</button><button class="btn btn-primary btn-lg" id="go">Concluir</button></div></div>`;
   wa = mountWhatsapp(q('wa'), { onConnected: () => { q('go').focus(); } });
   const fim = async (ev) => {
